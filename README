@@ -1,3 +1,5 @@
 Build with: g++  filesystem.cpp -I../include -I/usr/local/include/fuse3  -pthread -L/usr/local/lib -lfuse3 -o filesystem -fpermissive -g
 in libfuse example dir.
 Mount: ./filesystem /mount_path
+
+Also it is possible to use with regular binary tree(tree_ex.h) and compare perfomance.
