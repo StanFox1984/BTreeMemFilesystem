@@ -170,29 +170,47 @@ public:
     }
     bool AddBlocksNextSize(int n)
     {
+        /*we ran out of blocks of size n, lets see if we have bigger free blocks */
+        /*take bigger one, split it and add to the queue which lacks free blocks*/
+        /*TODO: we need in fact to split it more that twice, but depending how much
+          bigger it is*/
         printf("Ran out of pool %d!\n", n);
         int initial_n = n;
         while((!free_blocks[n]) && (n<free_blocks.size())) n++;
         if(n >= free_blocks.size())
-        return false;
+            /* ops looks like no bigger free blocks were available */
+            return false;
+        /*we found bigger free block, lets create a new descriptor and initialize */
         MemPtr *block = (MemPtr*)malloc(sizeof(MemPtr));
         block->size    = free_blocks[n]->size>>1;
         block->address = free_blocks[n]->address;
+        /*we take its address, but only half of its size*/
         block->next = free_blocks[initial_n];
+        /*point to next in new list*/
         block->allocated = false;
         block->prev = NULL;
         block->sane_magic = (unsigned long)block;
+
         free_blocks[initial_n] = block;
+        /*added to the head of the queue*/
+
         block = free_blocks[n];
+        /*shift the queue of bigger blocks as this one is not available anymore*/
         free_blocks[n] = free_blocks[n]->next;
         free_blocks_num[n]--;
+
+        /*the remaining part of size is a another block, increment the address*/
         block->address = (void*)((unsigned long)free_blocks[initial_n]->address + free_blocks[initial_n]->size);
         block->next = free_blocks[initial_n];
+        /*point to next one in initial block queue*/
         block->allocated = false;
         block->prev = NULL;
         block->size = free_blocks[initial_n]->size;
+        /*make it same size, initialize*/
+
         free_blocks[initial_n] = block;
         free_blocks_num[initial_n]++;
+        /*add it to the head of initial queue*/
         return true;
     }
     void *Allocate(int size)
