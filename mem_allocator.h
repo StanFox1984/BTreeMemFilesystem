@@ -24,93 +24,93 @@ int num_allocs = 0;
 
 int ceil_log2(unsigned long x)
 {
-  bool power_of_two = (x & x-1) == 0 ? true : false;
-  int k;
-  int t;
-  /*
-  0000        0
-  0001        1
-  0010        2
-  0011        2
-  0100        3
-  0101        3
-  0110        3
-  0111        3
-  1000        4
-  ...
-  */
-  unsigned char highest_set[] = { 0, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4 } ;
-  
-  if( x == 0 )
-  {
-    return 0;
-  }
-  if(x & 0xffff0000)
-  {
-      if(x & 0xff000000)
-      {
-     if(x & 0xf0000000)
-     {
-        k = highest_set[ (x & 0xf0000000) >> 28 ] + 28;
-     }
-     else
-     {
-        k = highest_set[ (x & 0x0f000000) >> 24 ] + 24;
-     }
-      }
-      else
-      {
-     if(x & 0x00f00000)
-     {
-        k = highest_set[ (x & 0x00f00000) >> 20 ] + 20;
-     }
-     else
-     {
-        k = highest_set[ (x & 0x000f0000) >> 16 ] + 16;
-     }
-      }
-  }
-  else
-  {
-      if(x & 0x0000ff00)
-      {
-         if(x & 0x0000f000)
-     {
-        k = highest_set[ (x & 0x0000f000) >> 12 ] + 12;
-     }
-     else
-     {
-        k = highest_set[ (x & 0x00000f00) >> 8 ] + 8;
-     }
-      }
-      else
-      {
-     if(x & 0x000000f0)
-     {
-        k = highest_set[ (x & 0x000000f0) >> 4 ] + 4;
-     }
-     else
-     {
-        k = highest_set[ x & 0x0000000f ];
-     }
-      }
-  }
+    bool power_of_two = (x & x-1) == 0 ? true : false;
+    int k;
+    int t;
+    /*
+    0000        0
+    0001        1
+    0010        2
+    0011        2
+    0100        3
+    0101        3
+    0110        3
+    0111        3
+    1000        4
+    ...
+    */
+    unsigned char highest_set[] = { 0, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4 } ;
 
-  if(power_of_two) return k-1;
+    if( x == 0 )
+    {
+        return 0;
+    }
+    if(x & 0xffff0000)
+    {
+        if(x & 0xff000000)
+        {
+            if(x & 0xf0000000)
+            {
+                k = highest_set[ (x & 0xf0000000) >> 28 ] + 28;
+            }
+            else
+            {
+                k = highest_set[ (x & 0x0f000000) >> 24 ] + 24;
+            }
+        }
+        else
+        {
+            if(x & 0x00f00000)
+            {
+                k = highest_set[ (x & 0x00f00000) >> 20 ] + 20;
+            }
+            else
+            {
+                k = highest_set[ (x & 0x000f0000) >> 16 ] + 16;
+            }
+        }
+    }
+    else
+    {
+        if(x & 0x0000ff00)
+        {
+            if(x & 0x0000f000)
+            {
+                k = highest_set[ (x & 0x0000f000) >> 12 ] + 12;
+            }
+            else
+            {
+                k = highest_set[ (x & 0x00000f00) >> 8 ] + 8;
+            }
+        }
+        else
+        {
+            if(x & 0x000000f0)
+            {
+                k = highest_set[ (x & 0x000000f0) >> 4 ] + 4;
+            }
+            else
+            {
+                k = highest_set[ x & 0x0000000f ];
+            }
+        }
+    }
 
-  return k;
+    if(power_of_two) return k-1;
+
+    return k;
 }
 
 class DefaultAllocator
 {
-    public:
+public:
     virtual void *Allocate(int size)
     {
-    return malloc(size);
+        return malloc(size);
     }
     virtual void Free(void *ptr)
     {
-    free(ptr);
+        free(ptr);
     }
 };
 
@@ -137,7 +137,7 @@ public:
         }
         while( (remain > start) && start )
         {
-            for( i=0;i<each;i++)
+            for( i=0; i<each; i++)
             {
                 MemPtr *block = (MemPtr*)malloc(sizeof(MemPtr));
                 block->address = (void*)((unsigned long)ptr + alloc);
@@ -218,16 +218,18 @@ public:
         int n;
         if(size == last_cached_size)
             n = last_n;
-        else { n  = ceil_log2(size) - skip;
-        last_cached_size = size;
-        last_n = n; }
+        else {
+            n  = ceil_log2(size) - skip;
+            last_cached_size = size;
+            last_n = n;
+        }
         if(n < 0) n = 0;
         if(n >= free_blocks.size())
             return NULL;
 
         if(!free_blocks[n])
             if(!AddBlocksNextSize(n))
-            return NULL;
+                return NULL;
         if(!is_sane(free_blocks[n]))
             return NULL;
         *((unsigned long*)(free_blocks[n]->address)) = (unsigned long)(free_blocks[n]);
@@ -247,9 +249,11 @@ public:
         int n;
         if(block->size == last_cached_size)
             n = last_n;
-        else { n  = ceil_log2(block->size) - skip;
-        last_cached_size = block->size;
-        last_n = n; }
+        else {
+            n  = ceil_log2(block->size) - skip;
+            last_cached_size = block->size;
+            last_n = n;
+        }
         if(n < 0) throw;
         if(n >= free_blocks.size())
             throw;
@@ -258,11 +262,11 @@ public:
         free_blocks[n] = block;
         free_blocks_num[n]++;
     }
-        void PrintBlocksUsage(void)
+    void PrintBlocksUsage(void)
     {
-        for(int i=0;i<free_blocks_num.size();i++)
+        for(int i=0; i<free_blocks_num.size(); i++)
         {
-        printf("Size %d Free blocks: %d\n", 1<<(i+skip), free_blocks_num[i]);
+            printf("Size %d Free blocks: %d\n", 1<<(i+skip), free_blocks_num[i]);
         }
     }
 protected:

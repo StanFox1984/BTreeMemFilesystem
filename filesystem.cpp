@@ -70,23 +70,23 @@ static int hello_getattr(const char *path, struct stat *stbuf)
         stbuf->st_nlink = 1;
         stbuf->st_size = sizeof(buffer);
     }
-     else {
-    char *_hello_str = NULL;
-    CharBTree<5>::CharBNode *node = tree.FindNode(path);
-    if(!node)
-        return -ENOENT;
-    _hello_str = node->value;
+    else {
+        char *_hello_str = NULL;
+        CharBTree<5>::CharBNode *node = tree.FindNode(path);
+        if(!node)
+            return -ENOENT;
+        _hello_str = node->value;
         stbuf->st_mode = S_IFREG | 0444;
         stbuf->st_nlink = 1;
         stbuf->st_size = strlen(_hello_str);
-}
+    }
 
     return res;
 }
 
 static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-             off_t offset, struct fuse_file_info *fi,
-             enum fuse_readdir_flags flags)
+                         off_t offset, struct fuse_file_info *fi,
+                         enum fuse_readdir_flags flags)
 {
     (void) offset;
     (void) fi;
@@ -100,8 +100,8 @@ static int hello_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     filler(buf, "memory", NULL, 0, 0);
     vector< CharBTree<5>::CharBNode * > vec;
     tree.TraverseTree(vec);
-    for(int i=0;i<vec.size();i++)
-            filler(buf, vec[i]->data+1, NULL, 0, 0);
+    for(int i=0; i<vec.size(); i++)
+        filler(buf, vec[i]->data+1, NULL, 0, 0);
 
     return 0;
 }
@@ -124,18 +124,18 @@ static int hello_open(const char *path, struct fuse_file_info *fi)
 }
 
 static int hello_read(const char *path, char *buf, size_t size, off_t offset,
-              struct fuse_file_info *fi)
+                      struct fuse_file_info *fi)
 {
     size_t len;
     (void) fi;
     char *_hello_str = NULL;
     if (strcmp(path, "/memory") == 0) {
         if (offset < sizeof(buffer)) {
-        if (offset + size > sizeof(buffer))
-            size = sizeof(buffer) - offset;
-        memcpy(buf, buffer + offset, size);
-    } else
-        size = 0;
+            if (offset + size > sizeof(buffer))
+                size = sizeof(buffer) - offset;
+            memcpy(buf, buffer + offset, size);
+        } else
+            size = 0;
         return size;
     }
     CharBTree<5>::CharBNode *node = tree.FindNode(path);
@@ -154,19 +154,20 @@ static int hello_read(const char *path, char *buf, size_t size, off_t offset,
 }
 
 static int hello_write(const char *path, const char *buf, size_t size,
-     off_t offset, struct fuse_file_info *fi)
+                       off_t offset, struct fuse_file_info *fi)
 {
     CharBTree<5>::CharBNode *node = tree.FindNode(path);
     if(!node)
         return -ENOENT;
     char *new_val = NULL;
-    if(offset + size > strlen(node->value)+1){
+    if(offset + size > strlen(node->value)+1) {
         new_val = (char*)mem->Allocate(offset+size+1);
-        memcpy(new_val, node->value, strlen(node->value)+1);}
+        memcpy(new_val, node->value, strlen(node->value)+1);
+    }
     memcpy(&new_val[offset], buf, size);
     new_val[offset+size+1] = 0;
     if(node->value)
-       mem->Free(node->value);
+        mem->Free(node->value);
     node->value = new_val;
 
     return size;

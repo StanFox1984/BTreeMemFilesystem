@@ -22,7 +22,7 @@ struct BTreeNode
     void AddNode(BTreeNode<T, D, buckets> *node)
     {
         int i=0;
-        for(;i<buckets;i++)
+        for(; i<buckets; i++)
         {
             if(nodes[i]==NULL)
             {
@@ -86,24 +86,24 @@ struct BTreeNode<const char *, const char *, buckets>
     }
     static void RemoveNode(BTreeNode<const char *, const char *, buckets> *node)
     {
-            BTreeNode<const char *, const char *, buckets> *parent = node->parent;
-            if(!parent)
-                return;
-            for(int i=0;i<buckets;i++)
+        BTreeNode<const char *, const char *, buckets> *parent = node->parent;
+        if(!parent)
+            return;
+        for(int i=0; i<buckets; i++)
+        {
+            if(parent->nodes[i] == node)
             {
-                if(parent->nodes[i] == node)
-                {
-                    parent->nodes[i] = NULL;
-                    break;
-                }
+                parent->nodes[i] = NULL;
+                break;
             }
-            for(int i=0;i<buckets;i++)
+        }
+        for(int i=0; i<buckets; i++)
+        {
+            if(node->nodes[i])
             {
-                if(node->nodes[i])
-                {
-                    parent->AddNode(node->nodes[i]);
-                }
+                parent->AddNode(node->nodes[i]);
             }
+        }
     }
     BTreeNode<const char *, const char *, buckets> *FindNode(const char *_data)
     {
@@ -111,7 +111,7 @@ struct BTreeNode<const char *, const char *, buckets>
             return this;
         int i=0;
         int last_not_null = 0;
-        for(i=0;i<buckets;i++)
+        for(i=0; i<buckets; i++)
         {
             if(nodes[i]!=NULL)
             {
@@ -134,14 +134,14 @@ struct BTreeNode<const char *, const char *, buckets>
             }
         }
         if(i==buckets)
-        if(nodes[last_not_null])
+            if(nodes[last_not_null])
                 return nodes[last_not_null]->FindNode(_data);
         return NULL;
     }
     void AddNode(BTreeNode<const char *, const char *, buckets> *node)
     {
         int i=0;
-        for(;i<buckets;i++)
+        for(; i<buckets; i++)
         {
             if(nodes[i]==NULL)
             {
@@ -187,7 +187,7 @@ struct BTreeNode<const char *, const char *, buckets>
     void print(void)
     {
         printf("data: %s %x start\n", data, this);
-        for(int i=0;i<buckets;i++)
+        for(int i=0; i<buckets; i++)
         {
             if(nodes[i]) {
                 printf("nodes[%d]:\n", i);
@@ -201,19 +201,19 @@ struct BTreeNode<const char *, const char *, buckets>
 template<int buckets>
 class CharBTree
 {
-    public:
+public:
     typedef BTreeNode<const char *, const char *, buckets>   CharBNode;
     DefaultAllocator *allocator;
     CharBTree(DefaultAllocator *all = NULL)
     {
-    if(all)
-    {
-        allocator = all;
-    }
-    else
-    {
-        allocator = new DefaultAllocator();
-    }
+        if(all)
+        {
+            allocator = all;
+        }
+        else
+        {
+            allocator = new DefaultAllocator();
+        }
         root = NULL;
     }
     void AddNode(const char *key, const char *value)
@@ -248,7 +248,7 @@ class CharBTree
         {
             BTreeNode<const char *, const char *, buckets> *_root = root;
             root = NULL;
-            for(int i=0;i<buckets;i++)
+            for(int i=0; i<buckets; i++)
             {
                 if(_root->nodes[i])
                 {
@@ -270,7 +270,7 @@ class CharBTree
         if(!_root) _root = root;
         if(!_root) return;
         vec.push_back(_root);
-        for(int i=0;i<buckets;i++)
+        for(int i=0; i<buckets; i++)
         {
             if(_root->nodes[i])
             {
@@ -279,7 +279,7 @@ class CharBTree
         }
         return;
     }
-    protected:
+protected:
     BTreeNode<const char *, const char *, buckets> *root;
 };
 #if 0
