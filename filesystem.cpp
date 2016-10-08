@@ -1,9 +1,6 @@
 /*
-  FUSE: Filesystem in Userspace
-  Copyright (C) 2001-2007  Miklos Szeredi <miklos@szeredi.hu>
-
-  This program can be distributed under the terms of the GNU GPL.
-  See the file COPYING.
+  Sample filesystem in user space and in memory using BTree and custom memory allocator.
+  Lisovskiy Stanislav Stanislav.Lisovskiy@gmail.com
 */
 
 
