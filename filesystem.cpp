@@ -14,13 +14,16 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
+
 #include "btree.h"
 #include "mem_allocator.h"
 
 CharBTree<5> *tree = NULL;
 MemoryAllocator2 *mem = NULL;
 
-unsigned char buffer[5000000];
+#define BUFSIZE 5000000
+
+unsigned char buffer[BUFSIZE];
 
 static int filesystem_getattr(const char *path, struct stat *stbuf)
 {
@@ -58,7 +61,9 @@ static int filesystem_readdir(const char *path, void *buf, fuse_fill_dir_t fille
     (void) flags;
 
     if (strcmp(path, "/") != 0)
+    {
         return -ENOENT;
+    }
 
     filler(buf, ".", NULL, 0, 0);
     filler(buf, "..", NULL, 0, 0);
@@ -105,15 +110,20 @@ static int filesystem_read(const char *path, char *buf, size_t size, off_t offse
     }
     CharBTree<5>::CharBNode *node = tree->FindNode(path);
     if(!node)
+    {
         return -ENOENT;
+    }
     _str = node->value;
     len = strlen(_str);
     if (offset < len) {
         if (offset + size > len)
             size = len - offset;
         memcpy(buf, _str + offset, size);
-    } else
+    }
+    else
+    {
         size = 0;
+    }
 
     return size;
 }
@@ -123,7 +133,9 @@ static int filesystem_write(const char *path, const char *buf, size_t size,
 {
     CharBTree<5>::CharBNode *node = tree->FindNode(path);
     if(!node)
+    {
         return -ENOENT;
+    }
     char *new_val = NULL;
     if(offset + size > strlen(node->value)+1) {
         new_val = (char*)mem->Allocate(offset+size+1);
@@ -132,7 +144,9 @@ static int filesystem_write(const char *path, const char *buf, size_t size,
     memcpy(&new_val[offset], buf, size);
     new_val[offset+size+1] = 0;
     if(node->value)
+    {
         mem->Free(node->value);
+    }
     node->value = new_val;
 
     return size;
@@ -180,13 +194,13 @@ int main(int argc, char *argv[])
     tree = new CharBTree<5>(mem);
     char *str = mem->Allocate(20);
     mem->PrintBlocksUsage();
-    filesystem_oper.getattr    = filesystem_getattr;
-    filesystem_oper.readdir    = filesystem_readdir;
-    filesystem_oper.open        = filesystem_open;
-    filesystem_oper.read        = filesystem_read;
+    filesystem_oper.getattr  = filesystem_getattr;
+    filesystem_oper.readdir  = filesystem_readdir;
+    filesystem_oper.open     = filesystem_open;
+    filesystem_oper.read     = filesystem_read;
     filesystem_oper.write    = filesystem_write;
     filesystem_oper.mknod    = filesystem_mknod;
-    filesystem_oper.unlink    = filesystem_unlink;
+    filesystem_oper.unlink   = filesystem_unlink;
     filesystem_oper.chown    = filesystem_chown;
     filesystem_oper.chmod    = filesystem_chmod;
     return fuse_main(argc, argv, &filesystem_oper, NULL);

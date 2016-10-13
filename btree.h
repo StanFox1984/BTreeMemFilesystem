@@ -1,3 +1,5 @@
+#ifndef BTREE_H
+#define BTREE_H
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -16,7 +18,6 @@ struct BTreeNode
 
     BTreeNode()
     {
-
         memset(nodes, NULL, sizeof(void*)*buckets);
     }
     void AddNode(BTreeNode<T, D, buckets> *node)
@@ -134,8 +135,12 @@ struct BTreeNode<const char *, const char *, buckets>
             }
         }
         if(i==buckets)
+        {
             if(nodes[last_not_null])
+            {
                 return nodes[last_not_null]->FindNode(_data);
+            }
+        }
         return NULL;
     }
     void AddNode(BTreeNode<const char *, const char *, buckets> *node)
@@ -182,7 +187,9 @@ struct BTreeNode<const char *, const char *, buckets>
             }
         }
         if(i == buckets)
+        {
             nodes[i-1]->AddNode(node);
+        }
     }
     void print(void)
     {
@@ -282,21 +289,4 @@ public:
 protected:
     BTreeNode<const char *, const char *, buckets> *root;
 };
-#if 0
-int main(void)
-{
-    CharBTree<5>    tree = CharBTree<5>();
-    tree.AddNode("1", "one");
-    tree.AddNode("2", "two");
-    CharBTree<5>::CharBNode *node = tree.FindNode("1");
-    printf("%s %s", node->data, node->value);
-    node = tree.FindNode("2");
-    printf("%s %s", node->data, node->value);
-    tree.RemoveNode(node, false);
-    node = tree.FindNode("2");
-    if(!node) printf("Not found\n");
-    else printf("%s %s", node->data, node->value);
-    tree.Print();
-    return 0;
-}
 #endif

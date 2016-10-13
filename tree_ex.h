@@ -1,3 +1,6 @@
+#ifndef TREE_EX_H
+#define TREE_EX_H
+
 #include <stdio.h>
 #include <stack>
 #include <string>
@@ -44,12 +47,6 @@ struct BinaryTreeNode<int, D>
     int             data;
     D               value;
 };
-#if 0
-bool operator < (char *str1, char *str2)
-{
-    return string(str1)<string(str2);
-}
-#endif
 
 template<class T, class D>
 class BinaryTree
@@ -205,13 +202,13 @@ public:
             _root = root;
 
         vec.push_back(_root);
-//	printf("\nLeft:\n");
+
         if(_root->left)
             TraverseTree(_root->left, vec);
-//	printf("\nRight:\n");
+
         if(_root->right)
             TraverseTree(_root->right, vec);
-//	printf("\n");
+
 
     }
     BinaryTreeNode<T,D> * Search(T value)
@@ -219,7 +216,9 @@ public:
         BinaryTreeNode<T,D> *tmp = root;
         while(tmp != NULL)
         {
+#if DEBUG
             printf("%d %d\n", tmp->data, value);
+#endif
             if(tmp->data == value)
             {
                 break;
@@ -255,7 +254,7 @@ public:
         node->value = value;
         AddNode(node);
     }
-    void AddNode(BinaryTreeNode<const char *,const char *>	*node, BinaryTreeNode<const char *,const char *>  *_root = NULL, bool non_recurs = true)
+    void AddNode(BinaryTreeNode<const char *,const char *>  *node, BinaryTreeNode<const char *,const char *>  *_root = NULL, bool non_recurs = true)
     {
 
         if(!root)
@@ -269,7 +268,9 @@ public:
             _root = root;
 
         if(non_recurs)
+        {
             return AddNodeNonRecurs(node, _root);
+        }
 
         if( _root->data < node-> data)
         {
@@ -300,7 +301,9 @@ public:
     }
     void RemoveNode(BinaryTreeNode<const char *,const char*> *node)
     {
+#if DEBUG
         printf("root:%s node:%s", root->data, node->data);
+#endif
         if(node->parent)
         {
             if(node->parent->left == node) //we are left
@@ -364,7 +367,9 @@ public:
                 root->parent = NULL;
             }
         }
+#if DEBUG
         printf("root:%s node:%s", root->data, node->data);
+#endif
     }
     void AddNodeNonRecurs(BinaryTreeNode<const char *,const char *> *node, BinaryTreeNode<const char *,const char *> *_root)
     {
@@ -410,38 +415,45 @@ public:
     {
         if(!_root)
             _root = root;
+
         if(!_root)
             return;
 
         vec.push_back(_root);
-//	printf("\nLeft:\n");
+
         if(_root->left)
             TraverseTree(_root->left, vec);
-//	printf("\nRight:\n");
+
         if(_root->right)
             TraverseTree(_root->right, vec);
-//	printf("\n");
 
     }
     void PrintTree(BinaryTreeNode<const char*, const char*> *_root = NULL)
     {
         if(!_root)
             _root = root;
+
+#if DEBUG
         printf("\n%s \n", _root->data);
         printf("\nLeft:\n");
+#endif
         if(_root->left)
+        {
             PrintTree(_root->left);
+        }
+#if DEBUG
         printf("\nRight:\n");
+#endif
         if(_root->right)
+        {
             PrintTree(_root->right);
-        printf("\n");
+        }
     }
     BinaryTreeNode<const char *,const char *> * Search(const char * value)
     {
         BinaryTreeNode<const char *,const char *> *tmp = root;
         while(tmp != NULL)
         {
-//          printf("%d %d\n", tmp->data, value);
             if(!strcmp(tmp->data, value))
             {
                 break;
@@ -460,25 +472,4 @@ public:
 protected:
     BinaryTreeNode<const char *,const char *> *root;
 };
-
-#if 0
-
-
-int main(void)
-{
-    BinaryTree<int> t;
-    t.Add(2);
-    t.Add(1);
-    t.Add(3);
-    t.Add(30);
-    t.Add(5);
-    t.PrintTree();
-    BinaryTreeNode<int> *node = t.Search(30);
-    t.RemoveNode(node);
-    if(!node)
-        printf("Not found\n");
-    else
-        printf("%d ", node->data);
-    return 0;
-}
 #endif

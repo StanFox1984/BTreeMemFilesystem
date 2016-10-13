@@ -153,7 +153,9 @@ public:
                 if(remain < start )
                     break;
             }
+#if DEBUG
             printf("remain %d alloc %d start %d last_each %d free_blocks %d\n", remain, alloc, start, i,free_blocks_num[n]);
+#endif
             if(remain < start )
                 break;
             start = start<<1;
@@ -174,7 +176,9 @@ public:
         /*take bigger one, split it and add to the queue which lacks free blocks*/
         /*TODO: we need in fact to split it more that twice, but depending how much
           bigger it is*/
+#if DEBUG
         printf("Ran out of pool %d!\n", n);
+#endif
         int initial_n = n;
         while((!free_blocks[n]) && (n<free_blocks.size())) n++;
         if(n >= free_blocks.size())
@@ -217,21 +221,34 @@ public:
     {
         int n;
         if(size == last_cached_size)
+        {
             n = last_n;
+        }
         else {
             n  = ceil_log2(size) - skip;
             last_cached_size = size;
             last_n = n;
         }
-        if(n < 0) n = 0;
+        if(n < 0)
+        {
+            n = 0;
+        }
         if(n >= free_blocks.size())
+        {
             return NULL;
+        }
 
         if(!free_blocks[n])
+        {
             if(!AddBlocksNextSize(n))
+            {
                 return NULL;
+            }
+        }
         if(!is_sane(free_blocks[n]))
+        {
             return NULL;
+        }
         *((unsigned long*)(free_blocks[n]->address)) = (unsigned long)(free_blocks[n]);
         void *ptr = (void*)(((unsigned long)free_blocks[n]->address) + sizeof(unsigned long));
         free_blocks[n]->allocated = true;
@@ -248,13 +265,16 @@ public:
             throw;
         int n;
         if(block->size == last_cached_size)
+        {
             n = last_n;
+        }
         else {
             n  = ceil_log2(block->size) - skip;
             last_cached_size = block->size;
             last_n = n;
         }
-        if(n < 0) throw;
+        if(n < 0)
+            throw;
         if(n >= free_blocks.size())
             throw;
         block->next = free_blocks[n];
