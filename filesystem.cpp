@@ -17,9 +17,11 @@
 
 #include "btree.h"
 #include "mem_allocator.h"
+#include "coder.h"
 
 CharBTree<5> *tree = NULL;
 MemoryAllocator2 *mem = NULL;
+Coder *coder = NULL;
 
 #define BUFSIZE 5000000
 
@@ -69,7 +71,7 @@ static int filesystem_readdir(const char *path, void *buf, fuse_fill_dir_t fille
     filler(buf, "..", NULL, 0, 0);
     filler(buf, "memory", NULL, 0, 0);
     vector< CharBTree<5>::CharBNode * > vec;
-    tree->TraverseTree(vec);
+    tree->TraverseTree(vec, NULL, false);
     for(int i=0; i<vec.size(); i++)
         filler(buf, vec[i]->data+1, NULL, 0, 0);
 
@@ -119,6 +121,7 @@ static int filesystem_read(const char *path, char *buf, size_t size, off_t offse
         if (offset + size > len)
             size = len - offset;
         memcpy(buf, _str + offset, size);
+        coder->decode(buf,buf,size);
     }
     else
     {
@@ -143,12 +146,14 @@ static int filesystem_write(const char *path, const char *buf, size_t size,
     }
     memcpy(&new_val[offset], buf, size);
     new_val[offset+size+1] = 0;
+    coder->encode(&new_val[offset], &new_val[offset], size+1);
     if(node->value)
     {
         mem->Free(node->value);
     }
     node->value = new_val;
-
+    mem->syncToDisk("./memory_file");
+    tree->syncToDisk("./btree_file");
     return size;
 }
 
@@ -190,8 +195,15 @@ static struct fuse_operations filesystem_oper;
 
 int main(int argc, char *argv[])
 {
+    char b[30];
     mem = new MemoryAllocator2(buffer, sizeof(buffer), 16, 32);
+    mem->syncFromDisk("./memory_file");
     tree = new CharBTree<5>(mem);
+    tree->syncFromDisk("./btree_file");
+    coder = new Coder("pass");
+    coder->encode("Hello", b, 5);
+    coder->decode(b,b,5);
+    printf(b);
     char *str = mem->Allocate(20);
     mem->PrintBlocksUsage();
     filesystem_oper.getattr  = filesystem_getattr;

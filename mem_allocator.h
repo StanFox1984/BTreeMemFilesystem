@@ -112,6 +112,10 @@ public:
     {
         free(ptr);
     }
+    virtual void *GetLowestAddress(void)
+    {
+        return NULL;
+    }
 };
 
 class MemoryAllocator2:public DefaultAllocator
@@ -121,6 +125,30 @@ public:
     unsigned long highest_address;
     int skip;
     vector<int>   free_blocks_num;
+    void syncToDisk(const char *filename)
+    {
+        FILE *fout = NULL;
+        fout = fopen(filename, "w+b");
+        if(!fout)
+        {
+            throw "Could not write to disk!";
+        }
+        fwrite((void*)lowest_address, highest_address-lowest_address, 1, fout);
+        fclose(fout);
+        return;
+    }
+    void syncFromDisk(const char *filename)
+    {
+        FILE *fin = NULL;
+        fin = fopen(filename, "r+b");
+        if(!fin)
+        {
+            return;
+        }
+        fread((void*)lowest_address, highest_address-lowest_address, 1, fin);
+        fclose(fin);
+        return;
+    }
     MemoryAllocator2(void *ptr, int size, int each=16384, unsigned long start = 128)
     {
         unsigned long remain = size;
@@ -140,7 +168,7 @@ public:
             for( i=0; i<each; i++)
             {
                 MemPtr *block = (MemPtr*)malloc(sizeof(MemPtr));
-                block->address = (void*)((unsigned long)ptr + alloc);
+                block->address = (void*)((unsigned long)alloc);
                 block->prev = NULL;
                 block->next = free_blocks[n];
                 block->size = start;
@@ -167,7 +195,7 @@ public:
     bool is_sane(MemPtr *block)
     {
         bool block_correct = (block->sane_magic == (unsigned long)block);
-        bool addr_correct = (((unsigned long)block->address <= highest_address) && ((unsigned long)block->address>=lowest_address));
+        bool addr_correct = (((unsigned long)block->address+lowest_address <= highest_address) && ((unsigned long)block->address+lowest_address>=lowest_address));
         return block_correct && addr_correct;
     }
     bool AddBlocksNextSize(int n)
@@ -217,6 +245,10 @@ public:
         /*add it to the head of initial queue*/
         return true;
     }
+    void *GetLowestAddress(void)
+    {
+        return lowest_address;
+    }
     void *Allocate(int size)
     {
         int n;
@@ -249,8 +281,8 @@ public:
         {
             return NULL;
         }
-        *((unsigned long*)(free_blocks[n]->address)) = (unsigned long)(free_blocks[n]);
-        void *ptr = (void*)(((unsigned long)free_blocks[n]->address) + sizeof(unsigned long));
+        *((unsigned long*)(free_blocks[n]->address+lowest_address)) = (unsigned long)(free_blocks[n]);
+        void *ptr = (void*)(((unsigned long)free_blocks[n]->address) + sizeof(unsigned long)+lowest_address);
         free_blocks[n]->allocated = true;
         free_blocks[n] = free_blocks[n]->next;
         free_blocks_num[n]--;

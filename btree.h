@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <vector>
+#include <queue>
+#include <stack>
+
 #include "mem_allocator.h"
 
 using namespace std;
@@ -223,6 +226,102 @@ public:
         }
         root = NULL;
     }
+    void syncToDisk(const char *filename, BTreeNode<const char *, const char *, buckets> *_root = NULL)
+    {
+        FILE *fout = NULL;
+        fout = fopen(filename, "w+b");
+        if(!fout)
+        {
+            throw "Could not write to disk!";
+        }
+        vector<CharBNode*> vec;
+        if(!_root)
+        {
+            if(root)
+            {
+                _root = root;
+                unsigned long buckets_num = buckets;
+                fwrite(&buckets_num, sizeof(unsigned long), 1, fout);
+                TraverseTree(vec, _root, false);
+                unsigned long size = vec.size();
+                fwrite(&size, sizeof(unsigned long), 1, fout);
+            }
+            else
+            {
+                return;
+            }
+        }
+
+        for(int n = 0;n<vec.size();n++)
+        {
+            _root = vec[n];
+            unsigned long offset = (unsigned long)_root - (unsigned long)allocator->GetLowestAddress();
+            fwrite(&offset, sizeof(unsigned long), 1, fout);
+            for(int i=0; i<buckets; i++)
+            {
+                if(_root->nodes[i])
+                {
+                    offset = (unsigned long)_root->nodes[i] - (unsigned long)allocator->GetLowestAddress();
+                    fwrite(&offset, sizeof(unsigned long), 1, fout);
+                }
+                else
+                {
+                    offset = 0;
+                    fwrite(&offset, sizeof(unsigned long), 1, fout);
+                }
+            }
+        }
+        fclose(fout);
+        return;
+    }
+    void syncFromDisk(const char *filename)
+    {
+        FILE *fin = NULL;
+        BTreeNode<const char *, const char *, buckets> **_root = NULL;
+        fin = fopen(filename, "r+b");
+        if(!fin)
+        {
+            return;
+        }
+        _root = &root;
+        unsigned long buckets_num = 0;
+        fread(&buckets_num, sizeof(unsigned long), 1, fin);
+        if(buckets_num != buckets)
+        {
+            throw "Mismatch between template buckets and file!";
+        }
+        unsigned long size = 0;
+        fread(&size, sizeof(unsigned long), 1, fin);
+        queue<CharBNode **>  q;
+        q.push(_root);
+        for(int n = 0; n<size ;n++)
+        {
+            while(! q.empty() )
+            {
+                _root = q.front();
+                q.pop();
+                unsigned long offset = 0;
+                fread(&offset, sizeof(unsigned long), 1, fin);
+                *_root = (unsigned long)allocator->GetLowestAddress() + offset;
+                for(int i=0; i<buckets; i++)
+                {
+                    fread(&offset, sizeof(unsigned long), 1, fin);
+                    if(offset != 0)
+                    {
+//                        (*_root)->nodes[i] = (unsigned long)allocator->GetLowestAddress() + offset;
+                        q.push(&((*_root)->nodes[i]));
+                    }
+                    else
+                    {
+//                        (*_root)->nodes[i] = NULL;
+                    }
+                }
+            }
+        }
+
+        fclose(fin);
+        return;
+    }
     void AddNode(const char *key, const char *value)
     {
         BTreeNode<const char *, const char *, buckets> *node = (CharBNode*)allocator->Allocate(sizeof( BTreeNode<const char *, const char *, buckets>));
@@ -272,19 +371,49 @@ public:
                 allocator->Free(node);
         }
     }
-    void TraverseTree(vector<CharBNode*> &vec, CharBNode *_root = NULL)
+    void TraverseTree(vector<CharBNode*> &vec, CharBNode *_root = NULL, bool width_or_depth = true)
     {
         if(!_root) _root = root;
         if(!_root) return;
-        vec.push_back(_root);
-        for(int i=0; i<buckets; i++)
+        CharBNode *tmp = _root;
+        if(width_or_depth)
         {
-            if(_root->nodes[i])
+            queue<CharBNode*>   q;
+            q.push(tmp);
+            while(! q.empty() )
             {
-                TraverseTree(vec, _root->nodes[i]);
+                tmp = q.front();
+                q.pop();
+                vec.push_back(tmp);
+                for(int i=0; i<buckets; i++)
+                {
+                    if(tmp->nodes[i])
+                    {
+                        q.push(tmp->nodes[i]);
+                    }
+                }
             }
+            return;
         }
-        return;
+        else
+        {
+            stack<CharBNode*>   st;
+            st.push(tmp);
+            while(! st.empty() )
+            {
+                tmp = st.top();
+                st.pop();
+                vec.push_back(tmp);
+                for(int i=0; i<buckets; i++)
+                {
+                    if(tmp->nodes[i])
+                    {
+                        st.push(tmp->nodes[i]);
+                    }
+                }
+            }
+            return;
+        }
     }
 protected:
     BTreeNode<const char *, const char *, buckets> *root;
