@@ -199,7 +199,7 @@ struct BTreeNode<const char *, const char *, buckets>
         printf("data: %s %x start\n", data, this);
         for(int i=0; i<buckets; i++)
         {
-            if(nodes[i]) {
+            if(this->nodes[i]) {
                 printf("nodes[%d]:\n", i);
                 nodes[i]->print();
             }
@@ -243,9 +243,11 @@ public:
                 _root = root;
                 unsigned long buckets_num = buckets;
                 fwrite(&buckets_num, sizeof(unsigned long), 1, fout);
+                printf("Writing buckets num %d\n", buckets_num);
                 TraverseTree(vec, _root, false);
                 unsigned long size = vec.size();
                 fwrite(&size, sizeof(unsigned long), 1, fout);
+                printf("Writing records num %d\n", size);
             }
             else
             {
@@ -253,10 +255,15 @@ public:
             }
         }
 
-        for(int n = 0;n<vec.size();n++)
+        for(int n = 0; n<vec.size(); n++)
         {
             _root = vec[n];
             unsigned long offset = (unsigned long)_root - (unsigned long)allocator->GetLowestAddress();
+            fwrite(&offset, sizeof(unsigned long), 1, fout);
+            printf("Wrote node %x key %s data %s offset %x\n", (unsigned long)_root, (_root)->data, (_root)->value, offset);
+            offset = (unsigned long)_root->data - (unsigned long)allocator->GetLowestAddress();
+            fwrite(&offset, sizeof(unsigned long), 1, fout);
+            offset = (unsigned long)_root->value - (unsigned long)allocator->GetLowestAddress();
             fwrite(&offset, sizeof(unsigned long), 1, fout);
             for(int i=0; i<buckets; i++)
             {
@@ -264,11 +271,17 @@ public:
                 {
                     offset = (unsigned long)_root->nodes[i] - (unsigned long)allocator->GetLowestAddress();
                     fwrite(&offset, sizeof(unsigned long), 1, fout);
+                    printf("Wrote node %x key %s data %s offset %x\n", (unsigned long)_root->nodes[i], (_root->nodes[i])->data, (_root->nodes[i])->value, offset);
+                    offset = (unsigned long)_root->nodes[i]->data - (unsigned long)allocator->GetLowestAddress();
+                    fwrite(&offset, sizeof(unsigned long), 1, fout);
+                    offset = (unsigned long)_root->nodes[i]->value - (unsigned long)allocator->GetLowestAddress();
+                    fwrite(&offset, sizeof(unsigned long), 1, fout);
                 }
                 else
                 {
                     offset = 0;
                     fwrite(&offset, sizeof(unsigned long), 1, fout);
+                    printf("Wrote node NULL offset %x\n", offset);
                 }
             }
         }
@@ -278,7 +291,7 @@ public:
     void syncFromDisk(const char *filename)
     {
         FILE *fin = NULL;
-        BTreeNode<const char *, const char *, buckets> **_root = NULL;
+        BTreeNode<const char *, const char *, buckets> **_root = NULL, *tmp = NULL;
         fin = fopen(filename, "r+b");
         if(!fin)
         {
@@ -293,30 +306,53 @@ public:
         {
             throw "Mismatch between template buckets and file!";
         }
+        else
+        {
+            printf("Num buckets is %d\n", buckets_num);
+        }
         unsigned long size = 0;
         fread(&size, sizeof(unsigned long), 1, fin);
-        queue<CharBNode **>  q;
-        q.push(_root);
-        for(int n = 0; n<size ;n++)
+        printf("Number records is %d\n", size);
+        for(int n = 0; n<size ; n++)
         {
-            while(! q.empty() )
+            unsigned long offset = 0, offset_data = 0, offset_value = 0;
+            fread(&offset, sizeof(unsigned long), 1, fin);
+            printf("Read initial offset %x %d\n", offset, n);
+            fread(&offset_data, sizeof(unsigned long), 1, fin);
+            printf("Read offset_data %x\n", offset_data);
+            fread(&offset_value, sizeof(unsigned long), 1, fin);
+            printf("Read offset value %x\n", offset_value);
+            if(offset != 0)
             {
-                _root = q.front();
-                q.pop();
-                unsigned long offset = 0;
-                fread(&offset, sizeof(unsigned long), 1, fin);
-                *_root = (unsigned long)allocator->GetLowestAddress() + offset;
+                if(n==0)
+                {
+                    *_root = (unsigned long)allocator->GetLowestAddress() + offset;
+                    (*_root)->data = (unsigned long)allocator->GetLowestAddress() + offset_data;
+                    (*_root)->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
+                    tmp = *_root;
+                }
+                else
+                {
+                    tmp = (unsigned long)allocator->GetLowestAddress() + offset;
+                    tmp->data = (unsigned long)allocator->GetLowestAddress() + offset_data;
+                    tmp->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
+                }
+                printf("Extracted node %x key %s data %s offset %x\n", tmp, tmp->data, tmp->value, offset);
                 for(int i=0; i<buckets; i++)
                 {
                     fread(&offset, sizeof(unsigned long), 1, fin);
+                    printf("Read offset %x\n", offset);
                     if(offset != 0)
                     {
 //                        (*_root)->nodes[i] = (unsigned long)allocator->GetLowestAddress() + offset;
-                        q.push(&((*_root)->nodes[i]));
-                    }
-                    else
-                    {
-//                        (*_root)->nodes[i] = NULL;
+                        fread(&offset_data, sizeof(unsigned long), 1, fin);
+                        printf("Read offset_data %x\n", offset_data);
+                        fread(&offset_value, sizeof(unsigned long), 1, fin);
+                        printf("Read offset value %x\n", offset_value);
+                        tmp->nodes[i] = (unsigned long)allocator->GetLowestAddress() + offset;
+                        tmp->nodes[i]->data = (unsigned long)allocator->GetLowestAddress() + offset_data;
+                        tmp->nodes[i]->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
+                        printf("Included node %x key %s data %s offset %x\n", tmp->nodes[i], tmp->nodes[i]->data, tmp->nodes[i]->value, offset);
                     }
                 }
             }
@@ -400,7 +436,7 @@ public:
                 vec.push_back(tmp);
                 for(int i=0; i<buckets; i++)
                 {
-                    if(tmp->nodes[i])
+                    if(tmp->nodes[i] && tmp->nodes[i]!=tmp)
                     {
                         q.push(tmp->nodes[i]);
                     }
@@ -419,7 +455,7 @@ public:
                 vec.push_back(tmp);
                 for(int i=0; i<buckets; i++)
                 {
-                    if(tmp->nodes[i])
+                    if(tmp->nodes[i] && tmp->nodes[i]!=tmp)
                     {
                         st.push(tmp->nodes[i]);
                     }
