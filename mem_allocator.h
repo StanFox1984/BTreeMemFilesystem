@@ -116,6 +116,10 @@ public:
     {
         return NULL;
     }
+    virtual void *GetHighestAddress(void)
+    {
+        return (void*)0xffffffff;
+    }
 };
 
 class MemoryAllocator2:public DefaultAllocator
@@ -133,6 +137,7 @@ public:
         {
             throw "Could not write to disk!";
         }
+        printf("Syncing %x-%x to disk to file %s\n", lowest_address, highest_address, filename);
         fwrite((void*)lowest_address, highest_address-lowest_address, 1, fout);
         fclose(fout);
         return;
@@ -143,8 +148,10 @@ public:
         fin = fopen(filename, "r+b");
         if(!fin)
         {
+            printf("Could not open file %s\n", filename);
             return;
         }
+        printf("Syncing %x-%x from disk file %s\n", lowest_address, highest_address, filename);
         fread((void*)lowest_address, highest_address-lowest_address, 1, fin);
         fclose(fin);
         return;
@@ -249,6 +256,10 @@ public:
     {
         return lowest_address;
     }
+    void *GetHighestAddress(void)
+    {
+        return highest_address;
+    }
     void *Allocate(int size)
     {
         int n;
@@ -286,6 +297,7 @@ public:
         free_blocks[n]->allocated = true;
         free_blocks[n] = free_blocks[n]->next;
         free_blocks_num[n]--;
+        printf("Allocator:Returned address %x\n",(unsigned long)ptr);
         return ptr;
     }
     void Free(void *ptr)

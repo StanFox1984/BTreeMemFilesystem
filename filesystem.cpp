@@ -153,7 +153,7 @@ static int filesystem_write(const char *path, const char *buf, size_t size,
     }
     node->value = new_val;
     mem->syncToDisk("./memory_file");
-    tree->syncToDisk("./btree_file");
+    tree->syncToDisk("/btree_file");
     return size;
 }
 
@@ -199,7 +199,7 @@ int main(int argc, char *argv[])
     mem = new MemoryAllocator2(buffer, sizeof(buffer), 16, 32);
     mem->syncFromDisk("./memory_file");
     tree = new CharBTree<5>(mem);
-    tree->syncFromDisk("./btree_file");
+    tree->syncFromDisk("/btree_file");
     coder = new Coder("pass");
     coder->encode("Hello", b, 5);
     coder->decode(b,b,5);

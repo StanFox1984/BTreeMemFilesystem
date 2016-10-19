@@ -234,6 +234,7 @@ public:
         {
             throw "Could not write to disk!";
         }
+        printf("Syncing to disk file %s\n", filename);
         vector<CharBNode*> vec;
         if(!_root)
         {
@@ -281,8 +282,10 @@ public:
         fin = fopen(filename, "r+b");
         if(!fin)
         {
+            printf("Could not open file %s\n", filename);
             return;
         }
+        printf("Syncing from disk file %s\n", filename);
         _root = &root;
         unsigned long buckets_num = 0;
         fread(&buckets_num, sizeof(unsigned long), 1, fin);
@@ -326,8 +329,10 @@ public:
     {
         BTreeNode<const char *, const char *, buckets> *node = (CharBNode*)allocator->Allocate(sizeof( BTreeNode<const char *, const char *, buckets>));
         node->Init();
-        node->data = key;
-        node->value = value;
+        node->data = (char*)allocator->Allocate(strlen(key)+1);
+        node->value= (char*)allocator->Allocate(strlen(value)+1);
+        strcpy(node->data, key);
+        strcpy(node->value, value);
         if(!root)
         {
             root = node;
@@ -362,13 +367,21 @@ public:
                 }
             }
             if(dispose)
+            {
+                allocator->Free(_root->data);
+                allocator->Free(_root->value);
                 allocator->Free(_root);
+            }
         }
         else
         {
             BTreeNode<const char *, const char *, buckets>::RemoveNode(node);
             if(dispose)
+            {
+                allocator->Free(node->data);
+                allocator->Free(node->value);
                 allocator->Free(node);
+            }
         }
     }
     void TraverseTree(vector<CharBNode*> &vec, CharBNode *_root = NULL, bool width_or_depth = true)
