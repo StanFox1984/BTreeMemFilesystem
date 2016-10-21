@@ -113,85 +113,100 @@ struct BTreeNode<const char *, const char *, buckets>
     {
         if(!strcmp(data, _data))
             return this;
-        int i=0;
-        int last_not_null = 0;
-        for(i=0; i<buckets; i++)
+        BTreeNode<const char *, const char *, buckets> *tmp = NULL;
+        int i=0, last_not_null = 0;
+        for(; i<buckets; i++)
         {
-            if(nodes[i]!=NULL)
+            bool add = true;
+            if(nodes[i] != NULL) last_not_null = i;
+            if(i>0)
             {
-                last_not_null = i;
-                if(i==0)
+                if(nodes[i-1] != NULL)
                 {
-                    if(strcmp(_data,nodes[i]->data)<=0)
-                        return nodes[i]->FindNode(_data);
+                    if(nodes[i-1]->data > _data)
+                    {
+                        add = false;
+                    }
+                }
+            }
+            if(i<(buckets-1))
+            {
+                if(nodes[i+1] != NULL)
+                {
+                    if(nodes[i+1]->data < _data)
+                    {
+                        add = false;
+                    }
+                }
+            }
+            if(add)
+            {
+                if(nodes[i] != NULL)
+                {
+                    return nodes[i]->FindNode(_data);
                 }
                 else
                 {
                     if(nodes[i-1])
-                    {
-                        if(strcmp(_data,nodes[i-1]->data)>0 && strcmp(_data,nodes[i]->data)<=0)
-                        {
-                            return nodes[i]->FindNode(_data);
-                        }
-                    }
+                        tmp = nodes[i-1]->FindNode(_data);
+                    if(tmp) return tmp;
+                    if(nodes[i+1])
+                        tmp = nodes[i+1]->FindNode(_data);
+                    if(tmp) return tmp;
                 }
+                break;
             }
         }
-        if(i==buckets)
+        if(i == buckets)
         {
-            if(nodes[last_not_null])
-            {
-                return nodes[last_not_null]->FindNode(_data);
-            }
+            return nodes[last_not_null]->FindNode(_data);
         }
         return NULL;
     }
     void AddNode(BTreeNode<const char *, const char *, buckets> *node)
     {
-        int i=0;
+        int i=0, last_not_null = 0;
         for(; i<buckets; i++)
         {
-            if(nodes[i]==NULL)
+            bool add = true;
+            if(nodes[i] != NULL) last_not_null = i;
+            if(i>0)
             {
-                if(i>0)
+                if(nodes[i-1] != NULL)
                 {
-                    if(nodes[i-1]->data < node->data)
+                    if(nodes[i-1]->data > node->data)
                     {
-                        nodes[i] = node;
-                        node->parent = this;
-                        break;
+                        add = false;
                     }
                 }
-                else
+            }
+            if(i<(buckets-1))
+            {
+                if(nodes[i+1] != NULL)
+                {
+                    if(nodes[i+1]->data < node->data)
+                    {
+                        add = false;
+                    }
+                }
+            }
+            if(add)
+            {
+                if(nodes[i] == NULL)
                 {
                     nodes[i] = node;
                     node->parent = this;
-                    break;
-                }
-            }
-            else
-            {
-                if(i>0)
-                {
-                    if(nodes[i-1]->data < node->data && node->data<=nodes[i]->data)
-                    {
-                        nodes[i]->AddNode(node);
-                        break;
-                    }
                 }
                 else
                 {
-                    if(nodes[i]->data >= node->data)
-                    {
-                        nodes[i]->AddNode(node);
-                        break;
-                    }
+                    nodes[i]->AddNode(node);
                 }
+                break;
             }
         }
         if(i == buckets)
         {
-            nodes[i-1]->AddNode(node);
+            nodes[last_not_null]->AddNode(node);
         }
     }
     void print(void)
