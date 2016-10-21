@@ -55,8 +55,8 @@ static int filesystem_getattr(const char *path, struct stat *stbuf)
 }
 
 static int filesystem_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-                         off_t offset, struct fuse_file_info *fi,
-                         enum fuse_readdir_flags flags)
+                              off_t offset, struct fuse_file_info *fi,
+                              enum fuse_readdir_flags flags)
 {
     (void) offset;
     (void) fi;
@@ -98,7 +98,7 @@ static int filesystem_open(const char *path, struct fuse_file_info *fi)
 }
 
 static int filesystem_read(const char *path, char *buf, size_t size, off_t offset,
-                      struct fuse_file_info *fi)
+                           struct fuse_file_info *fi)
 {
     size_t len;
     (void) fi;
@@ -134,7 +134,7 @@ static int filesystem_read(const char *path, char *buf, size_t size, off_t offse
 }
 
 static int filesystem_write(const char *path, const char *buf, size_t size,
-                       off_t offset, struct fuse_file_info *fi)
+                            off_t offset, struct fuse_file_info *fi)
 {
     CharBTree<5>::CharBNode *node = tree->FindNode(path);
     if(!node)

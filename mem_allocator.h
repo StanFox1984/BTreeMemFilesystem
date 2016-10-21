@@ -142,14 +142,14 @@ public:
         printf("Syncing %x-%x to disk to file %s\n", lowest_address, highest_address, filename);
         fwrite((void*)lowest_address, highest_address-lowest_address, 1, fout);
         int num_alloc_blocks = 0;
-        for(int i=0;i<alloc_blocks_num.size();i++)
+        for(int i=0; i<alloc_blocks_num.size(); i++)
             num_alloc_blocks += alloc_blocks_num[i];
         fwrite((void*)&num_alloc_blocks, sizeof(int), 1, fout);
         printf("Wrote num_alloc_blocks %d\n", num_alloc_blocks);
-        for(int i=0;i<alloc_blocks.size();i++)
+        for(int i=0; i<alloc_blocks.size(); i++)
         {
             MemPtr *block = alloc_blocks[i];
-            for(int j=0;j<alloc_blocks_num[i];j++)
+            for(int j=0; j<alloc_blocks_num[i]; j++)
             {
                 int size = 0;
                 void *address = NULL;
@@ -178,7 +178,7 @@ public:
         int num_alloc_blocks = 0;
         fread((void*)&num_alloc_blocks, sizeof(int), 1, fin);
         printf("Read num_alloc_blocks %d\n", num_alloc_blocks);
-        for(int i=0;i<num_alloc_blocks;i++)
+        for(int i=0; i<num_alloc_blocks; i++)
         {
             int size = 0;
             void *address = NULL;
