@@ -145,14 +145,15 @@ static int filesystem_write(const char *path, const char *buf, size_t size,
     if(offset + size > strlen(node->value)+1) {
         new_val = (char*)mem->Allocate(offset+size+1);
         memcpy(new_val, node->value, strlen(node->value)+1);
+        if(node->value)
+        {
+            mem->Free(node->value);
+        }
     }
     memcpy(&new_val[offset], buf, size);
     new_val[offset+size+1] = 0;
     coder->encode(&new_val[offset], &new_val[offset], size+1);
-    if(node->value)
-    {
-        mem->Free(node->value);
-    }
+
     node->value = new_val;
     mem->syncToDisk("/memory_file");
     tree->syncToDisk("/btree_file");

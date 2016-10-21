@@ -14,13 +14,20 @@ int main(void)
     CharBTree<5> tree(mem), tree2(mem);
     tree.syncFromDisk("./btree_test_file");
     tree.Print();
-    BTreeNode<const char *, const char *, 5>  *node = tree.FindNode("Hello");
+    BTreeNode<const char *, const char *, 5>  *node = tree.FindNode("Hello"), *tmp = NULL;
     if(!node)
     {
         printf("nodes not present!\n");
         tree.AddNode("Hello", "World");
         tree.AddNode("Hello2", "World2");
+        tree.AddNode("Hello3", "World3");
         tree.AddNode("Abcde", "World3");
+        tree.AddNode("Hello8", "World8");
+        tmp = tree.FindNode("Hello8");
+        if(tmp)
+        {
+            tree.RemoveNode(tmp);
+        }
         printf("Traverse:\n");
         vector<BTreeNode<const char *, const char *, 5>  *> vec0;
         tree.TraverseTree(vec0, NULL, false);

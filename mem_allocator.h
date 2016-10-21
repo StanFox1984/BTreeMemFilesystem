@@ -248,6 +248,7 @@ public:
         /*take bigger one, split it and add to the queue which lacks free blocks*/
         /*TODO: we need in fact to split it more that twice, but depending how much
           bigger it is*/
+        throw;
 #if DEBUG
         printf("Ran out of pool %d!\n", n);
 #endif
