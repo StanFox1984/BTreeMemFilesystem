@@ -238,12 +238,12 @@ public:
         vector<CharBNode*> vec;
         if(!_root)
         {
+            unsigned long buckets_num = buckets;
+            fwrite(&buckets_num, sizeof(unsigned long), 1, fout);
+            printf("Writing buckets num %d\n", buckets_num);
             if(root)
             {
                 _root = root;
-                unsigned long buckets_num = buckets;
-                fwrite(&buckets_num, sizeof(unsigned long), 1, fout);
-                printf("Writing buckets num %d\n", buckets_num);
                 TraverseTree(vec, _root, false);
                 unsigned long size = vec.size();
                 fwrite(&size, sizeof(unsigned long), 1, fout);
@@ -304,6 +304,7 @@ public:
         fread(&buckets_num, sizeof(unsigned long), 1, fin);
         if(buckets_num != buckets)
         {
+            printf("Mismatch between template buckets and file! file: %d ours: %d\n", buckets_num, buckets);
             throw "Mismatch between template buckets and file!";
         }
         else

@@ -43,6 +43,7 @@ static int filesystem_getattr(const char *path, struct stat *stbuf)
     else {
         char *_str = NULL;
         CharBTree<5>::CharBNode *node = tree->FindNode(path);
+        tree->Print();
         if(!node)
             return -ENOENT;
         _str = node->value;
@@ -72,6 +73,7 @@ static int filesystem_readdir(const char *path, void *buf, fuse_fill_dir_t fille
     filler(buf, "memory", NULL, 0, 0);
     vector< CharBTree<5>::CharBNode * > vec;
     tree->TraverseTree(vec, NULL, false);
+    tree->Print();
     for(int i=0; i<vec.size(); i++)
         filler(buf, vec[i]->data+1, NULL, 0, 0);
 

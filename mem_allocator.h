@@ -130,6 +130,7 @@ public:
     int skip;
     vector<int>   free_blocks_num;
     vector<int>   alloc_blocks_num;
+    int           last_block_index;
 
     void syncToDisk(const char *filename)
     {
@@ -161,6 +162,7 @@ public:
                 printf("Wrote block %x size %d\n", address, size);
             }
         }
+        fwrite((void*)&last_block_index, sizeof(int), 1, fout);
         fclose(fout);
         return;
     }
@@ -187,21 +189,23 @@ public:
             printf("Read block %x size %d\n", address, size);
             AllocateSpecificAddress(address, size);
         }
+        fread((void*)&last_block_index, sizeof(int), 1, fin);
         fclose(fin);
         return;
     }
     MemoryAllocator2(void *ptr, int size, int each=16384, unsigned long start = 128)
     {
-        unsigned long remain = size;
+        unsigned long remain = size/2;
         unsigned long alloc = 0;
         int n=0, i=0;
+        int block_index = 0;
         skip = ceil_log2(start);
         free_blocks.push_back(NULL);
         free_blocks_num.push_back(0);
         alloc_blocks.push_back(NULL);
         alloc_blocks_num.push_back(0);
         lowest_address = (unsigned long)ptr;
-        highest_address = (unsigned long)ptr + remain;
+        highest_address = (unsigned long)ptr + size;
         if(!ptr)
         {
             throw "Bad ptr!";
@@ -210,7 +214,7 @@ public:
         {
             for( i=0; i<each; i++)
             {
-                MemPtr *block = (MemPtr*)malloc(sizeof(MemPtr));
+                MemPtr *block = (MemPtr*)(ptr+size/2+sizeof(MemPtr)*block_index);
                 block->address = (void*)((unsigned long)alloc);
                 block->prev = NULL;
                 block->next = NULL;
@@ -219,7 +223,7 @@ public:
                 AddBlockToFreeQueue(block, n);
                 remain -= start;
                 alloc += start;
-
+                block_index++;
                 if(remain < start )
                     break;
             }
@@ -235,10 +239,12 @@ public:
             alloc_blocks_num.push_back(0);
             n++;
         }
+        last_block_index = block_index;
     }
     bool is_sane(MemPtr *block)
     {
-        bool block_correct = (block->sane_magic == (unsigned long)block);
+//        bool block_correct = (block->sane_magic == (unsigned long)block);
+        bool block_correct = true;
         bool addr_correct = (((unsigned long)block->address+lowest_address <= highest_address) && ((unsigned long)block->address+lowest_address>=lowest_address));
         return block_correct && addr_correct;
     }
@@ -248,7 +254,6 @@ public:
         /*take bigger one, split it and add to the queue which lacks free blocks*/
         /*TODO: we need in fact to split it more that twice, but depending how much
           bigger it is*/
-        throw;
 #if DEBUG
         printf("Ran out of pool %d!\n", n);
 #endif
@@ -257,37 +262,34 @@ public:
         if(n >= free_blocks.size())
             /* ops looks like no bigger free blocks were available */
             return false;
-        /*we found bigger free block, lets create a new descriptor and initialize */
-        MemPtr *block = (MemPtr*)malloc(sizeof(MemPtr));
-        block->size    = free_blocks[n]->size>>1;
-        block->address = free_blocks[n]->address;
-        /*we take its address, but only half of its size*/
-        block->next = free_blocks[initial_n];
-        /*point to next in new list*/
-        block->allocated = false;
-        block->prev = NULL;
-        block->sane_magic = (unsigned long)block;
-
-        free_blocks[initial_n] = block;
-        /*added to the head of the queue*/
-
-        block = free_blocks[n];
+        int num_splits = 1<<(n - initial_n);
+        int i=0;
+        for(;i<num_splits-1;i++)
+        {
+            /*we found bigger free block, lets create a new descriptor and initialize */
+            MemPtr *block = (MemPtr*)(lowest_address+((highest_address-lowest_address)/2)+sizeof(MemPtr)*last_block_index);
+            last_block_index++;
+            block->size    = 1<<(initial_n+skip);
+            block->address = free_blocks[n]->address + (1<<(initial_n+skip))*i;
+            block->allocated = false;
+            block->prev = NULL;
+            block->sane_magic = (unsigned long)block;
+            AddBlockToFreeQueue(block, initial_n);
+            /*added to the head of the queue*/
+        }
+        MemPtr *block = free_blocks[n];
         /*shift the queue of bigger blocks as this one is not available anymore*/
-        free_blocks[n] = free_blocks[n]->next;
+        RemoveBlockFromQueue(block, n, free_blocks);
         free_blocks_num[n]--;
-
-        /*the remaining part of size is a another block, increment the address*/
-        block->address = (void*)((unsigned long)free_blocks[initial_n]->address + free_blocks[initial_n]->size);
-        block->next = free_blocks[initial_n];
-        /*point to next one in initial block queue*/
-        block->allocated = false;
-        block->prev = NULL;
-        block->size = free_blocks[initial_n]->size;
-        /*make it same size, initialize*/
-
-        free_blocks[initial_n] = block;
-        free_blocks_num[initial_n]++;
         /*add it to the head of initial queue*/
+        AddBlockToQueue(block, initial_n, free_blocks);
+        free_blocks_num[initial_n]++;
+        /*the remaining part of size is a another block, increment the address*/
+        block->address = (void*)((unsigned long)free_blocks[initial_n]->address + i*(1<<(initial_n+skip)));
+        block->allocated = false;
+        block->size = 1<<(initial_n+skip);
+        block->sane_magic = block;
+        /*make it same size, initialize*/
         return true;
     }
     void *GetLowestAddress(void)
@@ -385,9 +387,15 @@ public:
     {
         MemPtr *block = (MemPtr*)(*((unsigned long*)((unsigned long)ptr-sizeof(unsigned long))));
         if(!is_sane(block))
+        {
+            printf("Wrong(insane) block %x address %x\n", block, block->address);
             throw;
+        }
         if(!block->allocated)
+        {
+            printf("Block %x address %x is not allocated\n", block, block->address);
             throw;
+        }
         int n;
         if(block->size == last_cached_size)
         {
@@ -399,10 +407,15 @@ public:
             last_n = n;
         }
         if(n < 0)
-            throw;
+            n = 0;
         if(n >= free_blocks.size())
+        {
+            printf("Wrong(insane) block size n %d(%d)\n", n, 1<<n+skip);
             throw;
+        }
         AddBlockToFreeQueue(block, n);
+        printf("Allocator: Freed address %x n %d\n", block->address, n);
+        return;
     }
     void PrintBlocksUsage(void)
     {
