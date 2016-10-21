@@ -28,7 +28,9 @@ int main(void)
         {
             printf("vec0[%d]: %s %s\n", i, vec0[i]->data, vec0[i]->value);
         }
+        mem->syncToDisk("./memory_file");
         tree.syncToDisk("./btree_test_file");
+        delete mem;
         return 0;
     }
     else

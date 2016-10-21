@@ -92,6 +92,8 @@ static int filesystem_open(const char *path, struct fuse_file_info *fi)
         strcpy(str,"");
         tree->AddNode(_path, str);
     }
+    mem->syncToDisk("/memory_file");
+    tree->syncToDisk("/btree_file");
     return 0;
 }
 
@@ -139,7 +141,7 @@ static int filesystem_write(const char *path, const char *buf, size_t size,
     {
         return -ENOENT;
     }
-    char *new_val = NULL;
+    char *new_val = node->value;
     if(offset + size > strlen(node->value)+1) {
         new_val = (char*)mem->Allocate(offset+size+1);
         memcpy(new_val, node->value, strlen(node->value)+1);
@@ -152,7 +154,7 @@ static int filesystem_write(const char *path, const char *buf, size_t size,
         mem->Free(node->value);
     }
     node->value = new_val;
-    mem->syncToDisk("./memory_file");
+    mem->syncToDisk("/memory_file");
     tree->syncToDisk("/btree_file");
     return size;
 }
@@ -162,6 +164,8 @@ static int filesystem_unlink(const char *path)
     CharBTree<5>::CharBNode *node = tree->FindNode(path);
     if(!node) return -ENOENT;
     tree->RemoveNode(node, false);
+    mem->syncToDisk("/memory_file");
+    tree->syncToDisk("/btree_file");
     return 0;
 }
 
@@ -179,6 +183,8 @@ static int filesystem_mknod(const char *path, mode_t mode, dev_t rdev)
         strcpy(str,"");
         tree->AddNode(_path, str);
     }
+    mem->syncToDisk("/memory_file");
+    tree->syncToDisk("/btree_file");
     return 0;
 }
 static int filesystem_chown(const char *path, uid_t uid, gid_t gid)
@@ -197,7 +203,7 @@ int main(int argc, char *argv[])
 {
     char b[30];
     mem = new MemoryAllocator2(buffer, sizeof(buffer), 16, 32);
-    mem->syncFromDisk("./memory_file");
+    mem->syncFromDisk("/memory_file");
     tree = new CharBTree<5>(mem);
     tree->syncFromDisk("/btree_file");
     coder = new Coder("pass");

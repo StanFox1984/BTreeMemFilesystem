@@ -129,6 +129,8 @@ public:
     unsigned long highest_address;
     int skip;
     vector<int>   free_blocks_num;
+    vector<int>   alloc_blocks_num;
+
     void syncToDisk(const char *filename)
     {
         FILE *fout = NULL;
@@ -139,6 +141,26 @@ public:
         }
         printf("Syncing %x-%x to disk to file %s\n", lowest_address, highest_address, filename);
         fwrite((void*)lowest_address, highest_address-lowest_address, 1, fout);
+        int num_alloc_blocks = 0;
+        for(int i=0;i<alloc_blocks_num.size();i++)
+            num_alloc_blocks += alloc_blocks_num[i];
+        fwrite((void*)&num_alloc_blocks, sizeof(int), 1, fout);
+        printf("Wrote num_alloc_blocks %d\n", num_alloc_blocks);
+        for(int i=0;i<alloc_blocks.size();i++)
+        {
+            MemPtr *block = alloc_blocks[i];
+            for(int j=0;j<alloc_blocks_num[i];j++)
+            {
+                int size = 0;
+                void *address = NULL;
+                size = block->size;
+                address = block->address;
+                fwrite((void*)&address, sizeof(void*), 1, fout);
+                fwrite((void*)&size, sizeof(int), 1, fout);
+                block = block->next;
+                printf("Wrote block %x size %d\n", address, size);
+            }
+        }
         fclose(fout);
         return;
     }
@@ -153,6 +175,18 @@ public:
         }
         printf("Syncing %x-%x from disk file %s\n", lowest_address, highest_address, filename);
         fread((void*)lowest_address, highest_address-lowest_address, 1, fin);
+        int num_alloc_blocks = 0;
+        fread((void*)&num_alloc_blocks, sizeof(int), 1, fin);
+        printf("Read num_alloc_blocks %d\n", num_alloc_blocks);
+        for(int i=0;i<num_alloc_blocks;i++)
+        {
+            int size = 0;
+            void *address = NULL;
+            fread((void*)&address, sizeof(void*), 1, fin);
+            fread((void*)&size, sizeof(int), 1, fin);
+            printf("Read block %x size %d\n", address, size);
+            AllocateSpecificAddress(address, size);
+        }
         fclose(fin);
         return;
     }
@@ -164,6 +198,8 @@ public:
         skip = ceil_log2(start);
         free_blocks.push_back(NULL);
         free_blocks_num.push_back(0);
+        alloc_blocks.push_back(NULL);
+        alloc_blocks_num.push_back(0);
         lowest_address = (unsigned long)ptr;
         highest_address = (unsigned long)ptr + remain;
         if(!ptr)
@@ -177,14 +213,13 @@ public:
                 MemPtr *block = (MemPtr*)malloc(sizeof(MemPtr));
                 block->address = (void*)((unsigned long)alloc);
                 block->prev = NULL;
-                block->next = free_blocks[n];
+                block->next = NULL;
                 block->size = start;
                 block->sane_magic = (unsigned long)block;
-                block->allocated = false;
-                free_blocks[n] = block;
+                AddBlockToFreeQueue(block, n);
                 remain -= start;
                 alloc += start;
-                free_blocks_num[n]++;
+
                 if(remain < start )
                     break;
             }
@@ -196,6 +231,8 @@ public:
             start = start<<1;
             free_blocks.push_back(NULL);
             free_blocks_num.push_back(0);
+            alloc_blocks.push_back(NULL);
+            alloc_blocks_num.push_back(0);
             n++;
         }
     }
@@ -294,10 +331,53 @@ public:
         }
         *((unsigned long*)(free_blocks[n]->address+lowest_address)) = (unsigned long)(free_blocks[n]);
         void *ptr = (void*)(((unsigned long)free_blocks[n]->address) + sizeof(unsigned long)+lowest_address);
-        free_blocks[n]->allocated = true;
-        free_blocks[n] = free_blocks[n]->next;
-        free_blocks_num[n]--;
+        MemPtr *block = free_blocks[n];
+        AddBlockToAllocQueue(block, n);
         printf("Allocator:Returned address %x\n",(unsigned long)ptr);
+        return ptr;
+    }
+    void *AllocateSpecificAddress(void *address, int size)
+    {
+        int n;
+        if(size == last_cached_size)
+        {
+            n = last_n;
+        }
+        else {
+            n  = ceil_log2(size) - skip;
+            last_cached_size = size;
+            last_n = n;
+        }
+        if(n < 0)
+        {
+            n = 0;
+        }
+        if(n >= free_blocks.size())
+        {
+            return NULL;
+        }
+
+        if(!free_blocks[n])
+        {
+            if(!AddBlocksNextSize(n))
+            {
+                return NULL;
+            }
+        }
+        if(!is_sane(free_blocks[n]))
+        {
+            return NULL;
+        }
+        MemPtr *block = FindBlockWithAddressInFreeQueue(address, size);
+        if(block == NULL)
+        {
+            printf("Could not find block with address %x size %d\n", address, size);
+            return NULL;
+        }
+        *((unsigned long*)(block->address+lowest_address)) = (unsigned long)(block);
+        void *ptr = (void*)(((unsigned long)block->address) + sizeof(unsigned long)+lowest_address);
+        AddBlockToAllocQueue(block, n);
+        printf("Allocator(specific):Returned address %x\n",(unsigned long)ptr);
         return ptr;
     }
     void Free(void *ptr)
@@ -321,10 +401,7 @@ public:
             throw;
         if(n >= free_blocks.size())
             throw;
-        block->next = free_blocks[n];
-        block->allocated = false;
-        free_blocks[n] = block;
-        free_blocks_num[n]++;
+        AddBlockToFreeQueue(block, n);
     }
     void PrintBlocksUsage(void)
     {
@@ -332,9 +409,97 @@ public:
         {
             printf("Size %d Free blocks: %d\n", 1<<(i+skip), free_blocks_num[i]);
         }
+        for(int i=0; i<alloc_blocks_num.size(); i++)
+        {
+            printf("Size %d Alloc blocks: %d\n", 1<<(i+skip), alloc_blocks_num[i]);
+        }
+    }
+    MemPtr *FindBlockWithAddressInFreeQueue(void *address, int size)
+    {
+        int n;
+        if(size == last_cached_size)
+        {
+            n = last_n;
+        }
+        else {
+            n  = ceil_log2(size) - skip;
+            last_cached_size = size;
+            last_n = n;
+        }
+        if(n < 0)
+            throw;
+        if(n >= free_blocks.size())
+            throw;
+        MemPtr *block = free_blocks[n];
+        int i=0;
+        while(i<free_blocks_num[n])
+        {
+            if(block->address == address)
+                break;
+            block = block->next;
+            i++;
+        }
+        if(i == free_blocks_num[n] || block->address != address)
+            return NULL;
+        return block;
+    }
+    void AddBlockToAllocQueue(MemPtr *block, int n)
+    {
+        RemoveBlockFromQueue(block, n, free_blocks);
+        AddBlockToQueue(block, n, alloc_blocks);
+        if(free_blocks_num[n]>0)
+            free_blocks_num[n]--;
+        alloc_blocks_num[n]++;
+        block->allocated = true;
+    }
+    void AddBlockToFreeQueue(MemPtr *block, int n)
+    {
+        RemoveBlockFromQueue(block, n, alloc_blocks);
+        AddBlockToQueue(block, n, free_blocks);
+        free_blocks_num[n]++;
+        if(alloc_blocks_num[n]>0)
+            alloc_blocks_num[n]--;
+        block->allocated = false;
+    }
+    void AddBlockToQueue(MemPtr *block, int n, vector< MemPtr *>  &blocks)
+    {
+        if(blocks[n] == NULL)
+        {
+            blocks[n] = block;
+            block->prev = block;
+            block->next = block;
+        }
+        else
+        {
+            blocks[n]->prev->next = block;
+            block->prev = blocks[n]->prev;
+            blocks[n]->prev = block;
+            block->next = blocks[n];
+        }
+        return;
+    }
+    void RemoveBlockFromQueue(MemPtr *block, int n, vector< MemPtr *> &blocks)
+    {
+        if(blocks[n] == block)
+        {
+            if(block->next == block)
+            {
+                blocks[n] = NULL;
+            }
+            else
+            {
+                blocks[n] = blocks[n]->next;
+            }
+        }
+        if(block->prev)
+            block->prev->next = block->next;
+        if(block->next)
+            block->next->prev = block->prev;
+        return;
     }
 protected:
     vector< MemPtr *>   free_blocks;
+    vector< MemPtr *>   alloc_blocks;
     int last_cached_size;
     int last_n;
 };
