@@ -267,7 +267,7 @@ public:
             _root = vec[n];
             unsigned long offset = (unsigned long)_root - (unsigned long)allocator->GetLowestAddress();
             fwrite(&offset, sizeof(unsigned long), 1, fout);
-            printf("Wrote node %x key %s data %s offset %x\n", (unsigned long)_root, (_root)->data, (_root)->value, offset);
+            printf("Wrote node %x key %s offset %x\n", (unsigned long)_root, (_root)->data, offset);
             offset = (unsigned long)_root->data - (unsigned long)allocator->GetLowestAddress();
             fwrite(&offset, sizeof(unsigned long), 1, fout);
             offset = (unsigned long)_root->value - (unsigned long)allocator->GetLowestAddress();
@@ -278,7 +278,7 @@ public:
                 {
                     offset = (unsigned long)_root->nodes[i] - (unsigned long)allocator->GetLowestAddress();
                     fwrite(&offset, sizeof(unsigned long), 1, fout);
-                    printf("Wrote node %x key %s data %s offset %x\n", (unsigned long)_root->nodes[i], (_root->nodes[i])->data, (_root->nodes[i])->value, offset);
+                    printf("Wrote node %x key %s offset %x\n", (unsigned long)_root->nodes[i], (_root->nodes[i])->data, offset);
                     offset = (unsigned long)_root->nodes[i]->data - (unsigned long)allocator->GetLowestAddress();
                     fwrite(&offset, sizeof(unsigned long), 1, fout);
                     offset = (unsigned long)_root->nodes[i]->value - (unsigned long)allocator->GetLowestAddress();

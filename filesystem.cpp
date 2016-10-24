@@ -205,7 +205,8 @@ static struct fuse_operations filesystem_oper;
 int main(int argc, char *argv[])
 {
     char b[30];
-    mem = new MemoryAllocator2(buffer, sizeof(buffer), 16, 32);
+    mem = new MemoryAllocator2(buffer, sizeof(buffer), 32, 4096);
+    mem->PrintBlocksUsage();
     mem->syncFromDisk("/memory_file");
     tree = new CharBTree<5>(mem);
     tree->syncFromDisk("/btree_file");
@@ -213,7 +214,7 @@ int main(int argc, char *argv[])
     coder->encode("Hello", b, 5);
     coder->decode(b,b,5);
     printf(b);
-    char *str = mem->Allocate(20);
+//    char *str = mem->Allocate(20);
     mem->PrintBlocksUsage();
     filesystem_oper.getattr  = filesystem_getattr;
     filesystem_oper.readdir  = filesystem_readdir;

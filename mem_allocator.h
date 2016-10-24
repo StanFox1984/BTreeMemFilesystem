@@ -219,6 +219,7 @@ public:
         {
             for( i=0; i<each; i++)
             {
+                if((alloc+start) >= (size/2)) break;
                 MemPtr *block = (MemPtr*)(ptr+size/2+sizeof(MemPtr)*block_index);
                 block->address = (void*)((unsigned long)alloc);
                 block->prev = NULL;
@@ -396,7 +397,7 @@ public:
         MemPtr *block = FindBlockWithAddressInFreeQueue(address, size);
         if(block == NULL)
         {
-            printf("Could not find block with address %x size %d\n", address, size);
+            printf("Could not find block with address %x size %d queue size %d for n: %d\n", address, size, free_blocks_num[n], n);
             return NULL;
         }
 
@@ -447,10 +448,21 @@ public:
         for(int i=0; i<free_blocks_num.size(); i++)
         {
             printf("Size %d Free blocks: %d\n", 1<<(i+skip), free_blocks_num[i]);
+            MemPtr *block = free_blocks[i];
+            int u = 0;
+            while(true)
+            {
+                printf(" Block %x address %x n %d\n", block, block->address, i, 1<<(i+skip));
+                block = block->next;
+                if(block == free_blocks[i] || u>16)
+                    break;
+                u++;
+            }
         }
         for(int i=0; i<alloc_blocks_num.size(); i++)
         {
             printf("Size %d Alloc blocks: %d\n", 1<<(i+skip), alloc_blocks_num[i]);
+
         }
     }
     MemPtr *FindBlockWithAddressInFreeQueue(void *address, int size)
@@ -471,11 +483,14 @@ public:
             throw;
         MemPtr *block = free_blocks[n];
         int i=0;
-        while(i<free_blocks_num[n])
+        while(true)
         {
+            printf("%x\n", block->address);
             if(block->address == address)
                 break;
             block = block->next;
+            if(block == free_blocks[n])
+                break;
             i++;
         }
         if(i == free_blocks_num[n] || block->address != address)
