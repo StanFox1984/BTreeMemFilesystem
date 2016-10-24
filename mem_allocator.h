@@ -187,7 +187,12 @@ public:
             fread((void*)&address, sizeof(void*), 1, fin);
             fread((void*)&size, sizeof(int), 1, fin);
             printf("Read block %x size %d\n", address, size);
-            AllocateSpecificAddress(address, size);
+            void *ptr = AllocateSpecificAddress(address, size);
+            MemPtr *block = GetBlockFromPtr(ptr);
+            if(is_sane(block))
+            {
+                printf("Sanity check passed for block %x ptr %x\n", block, ptr);
+            }
         }
         fread((void*)&last_block_index, sizeof(int), 1, fin);
         fclose(fin);
@@ -210,7 +215,7 @@ public:
         {
             throw "Bad ptr!";
         }
-        while( (remain > start) && start )
+        while( (remain > start) && start && ((alloc+start) < (size/2)) )
         {
             for( i=0; i<each; i++)
             {
@@ -243,9 +248,14 @@ public:
     }
     bool is_sane(MemPtr *block)
     {
-//        bool block_correct = (block->sane_magic == (unsigned long)block);
-        bool block_correct = true;
+        if(block == NULL) {
+            printf("block is NULL\n");
+            throw;
+        }
+        bool block_correct = (block->sane_magic == (unsigned long)block);
+        if(!block_correct) printf("block sane magic is wrong: %x should be %x\n", block->sane_magic, block);
         bool addr_correct = (((unsigned long)block->address+lowest_address <= highest_address) && ((unsigned long)block->address+lowest_address>=lowest_address));
+        if(!addr_correct) printf("block address is wrong: %x should be between %x-%x\n", block->address, lowest_address, highest_address);
         return block_correct && addr_correct;
     }
     bool AddBlocksNextSize(int n)
@@ -254,9 +264,8 @@ public:
         /*take bigger one, split it and add to the queue which lacks free blocks*/
         /*TODO: we need in fact to split it more that twice, but depending how much
           bigger it is*/
-#if DEBUG
+
         printf("Ran out of pool %d!\n", n);
-#endif
         int initial_n = n;
         while((!free_blocks[n]) && (n<free_blocks.size())) n++;
         if(n >= free_blocks.size())
@@ -300,9 +309,20 @@ public:
     {
         return highest_address;
     }
-    void *Allocate(int size)
+    void SetBlockToPtr(void *ptr, MemPtr *block)
+    {
+        (*((unsigned long*)((unsigned long)ptr-sizeof(unsigned long)))) = (unsigned long)block;
+    }
+    MemPtr *GetBlockFromPtr(void *ptr)
+    {
+        MemPtr *block = (MemPtr*)(*((unsigned long*)((unsigned long)ptr-sizeof(unsigned long))));
+        printf("Allocator: Got block %x from ptr %x\n", block, ptr);
+        return block;
+    }
+    void *Allocate(int _size)
     {
         int n;
+        int size = _size + sizeof(unsigned long);
         if(size == last_cached_size)
         {
             n = last_n;
@@ -332,8 +352,10 @@ public:
         {
             return NULL;
         }
-        *((unsigned long*)(free_blocks[n]->address+lowest_address)) = (unsigned long)(free_blocks[n]);
         void *ptr = (void*)(((unsigned long)free_blocks[n]->address) + sizeof(unsigned long)+lowest_address);
+        SetBlockToPtr(ptr, free_blocks[n]);
+        free_blocks[n]->sane_magic = free_blocks[n];
+        printf("Setting sane magic %x(at addr %x) for block %x address %x ptr %x\n", free_blocks[n], free_blocks[n]->address+lowest_address, free_blocks[n], free_blocks[n]->address, ptr);
         MemPtr *block = free_blocks[n];
         AddBlockToAllocQueue(block, n);
         printf("Allocator:Returned address %x\n",(unsigned long)ptr);
@@ -377,18 +399,21 @@ public:
             printf("Could not find block with address %x size %d\n", address, size);
             return NULL;
         }
-        *((unsigned long*)(block->address+lowest_address)) = (unsigned long)(block);
+
         void *ptr = (void*)(((unsigned long)block->address) + sizeof(unsigned long)+lowest_address);
+        SetBlockToPtr(ptr, block);
+        block->sane_magic = block;
+        printf("Setting sane magic %x(at addr %x) for block %x address %x ptr %x\n", block, block->address+lowest_address, block, block->address, ptr);
         AddBlockToAllocQueue(block, n);
         printf("Allocator(specific):Returned address %x\n",(unsigned long)ptr);
         return ptr;
     }
     void Free(void *ptr)
     {
-        MemPtr *block = (MemPtr*)(*((unsigned long*)((unsigned long)ptr-sizeof(unsigned long))));
+        MemPtr *block = GetBlockFromPtr(ptr);
         if(!is_sane(block))
         {
-            printf("Wrong(insane) block %x address %x\n", block, block->address);
+            printf("Wrong(insane) block %x address %x in ptr %x\n", block, block->address, ptr);
             throw;
         }
         if(!block->allocated)
@@ -414,7 +439,7 @@ public:
             throw;
         }
         AddBlockToFreeQueue(block, n);
-        printf("Allocator: Freed address %x n %d\n", block->address, n);
+        printf("Allocator: Freed address %x(full %x) n %d(size %d)\n", block->address, ptr, n, 1<<(skip+n));
         return;
     }
     void PrintBlocksUsage(void)

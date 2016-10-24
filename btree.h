@@ -98,7 +98,6 @@ struct BTreeNode<const char *, const char *, buckets>
             if(parent->nodes[i] == node)
             {
                 parent->nodes[i] = NULL;
-                break;
             }
         }
         for(int i=0; i<buckets; i++)
@@ -111,6 +110,7 @@ struct BTreeNode<const char *, const char *, buckets>
     }
     BTreeNode<const char *, const char *, buckets> *FindNode(const char *_data)
     {
+        printf("Trying to find node data %s at node %x data %s\n", _data, this, this->data);
         if(!strcmp(data, _data))
             return this;
         BTreeNode<const char *, const char *, buckets> *tmp = NULL;
@@ -123,7 +123,7 @@ struct BTreeNode<const char *, const char *, buckets>
             {
                 if(nodes[i-1] != NULL)
                 {
-                    if(nodes[i-1]->data > _data)
+                    if(strcmp(nodes[i-1]->data, _data) >= 0)
                     {
                         add = false;
                     }
@@ -133,7 +133,7 @@ struct BTreeNode<const char *, const char *, buckets>
             {
                 if(nodes[i+1] != NULL)
                 {
-                    if(nodes[i+1]->data < _data)
+                    if(strcmp(nodes[i+1]->data,_data) <= 0)
                     {
                         add = false;
                     }
@@ -144,15 +144,6 @@ struct BTreeNode<const char *, const char *, buckets>
                 if(nodes[i] != NULL)
                 {
                     return nodes[i]->FindNode(_data);
-                }
-                else
-                {
-                    if(nodes[i-1])
-                        tmp = nodes[i-1]->FindNode(_data);
-                    if(tmp) return tmp;
-                    if(nodes[i+1])
-                        tmp = nodes[i+1]->FindNode(_data);
-                    if(tmp) return tmp;
                 }
                 break;
             }
@@ -166,6 +157,7 @@ struct BTreeNode<const char *, const char *, buckets>
     void AddNode(BTreeNode<const char *, const char *, buckets> *node)
     {
         int i=0, last_not_null = 0;
+        printf("Trying to add node %x data %s to node %x data %s\n", node, node->data, this, this->data);
         for(; i<buckets; i++)
         {
             bool add = true;
@@ -174,7 +166,7 @@ struct BTreeNode<const char *, const char *, buckets>
             {
                 if(nodes[i-1] != NULL)
                 {
-                    if(nodes[i-1]->data > node->data)
+                    if(strcmp(nodes[i-1]->data, node->data) >= 0)    //if previous is bigger or same don't add
                     {
                         add = false;
                     }
@@ -184,7 +176,7 @@ struct BTreeNode<const char *, const char *, buckets>
             {
                 if(nodes[i+1] != NULL)
                 {
-                    if(nodes[i+1]->data < node->data)
+                    if(strcmp(nodes[i+1]->data, node->data) <=0 )   //if next is smaller or same don't add
                     {
                         add = false;
                     }
@@ -192,19 +184,19 @@ struct BTreeNode<const char *, const char *, buckets>
             }
             if(add)
             {
-                if(nodes[i] == NULL)
+                if(nodes[i] == NULL)                             //if bucket is free(NULL) assign
                 {
                     nodes[i] = node;
                     node->parent = this;
                 }
                 else
                 {
-                    nodes[i]->AddNode(node);
+                    nodes[i]->AddNode(node);                     //if bucket is occupied add recursively
                 }
-                break;
+                return;
             }
         }
-        if(i == buckets)
+        if(i == buckets)                                         //no suitable bucket found? take biggest which was not null, add there
         {
             nodes[last_not_null]->AddNode(node);
         }
@@ -215,7 +207,7 @@ struct BTreeNode<const char *, const char *, buckets>
         for(int i=0; i<buckets; i++)
         {
             if(this->nodes[i]) {
-                printf("nodes[%d]:\n", i);
+                printf("    nodes[%d]=\n", i);
                 nodes[i]->print();
             }
         }
@@ -343,6 +335,7 @@ public:
                 if(n==0)
                 {
                     *_root = (unsigned long)allocator->GetLowestAddress() + offset;
+                    (*_root)->parent = NULL;
                     (*_root)->data = (unsigned long)allocator->GetLowestAddress() + offset_data;
                     (*_root)->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
                     tmp = *_root;
@@ -366,9 +359,15 @@ public:
                         fread(&offset_value, sizeof(unsigned long), 1, fin);
                         printf("Read offset value %x\n", offset_value);
                         tmp->nodes[i] = (unsigned long)allocator->GetLowestAddress() + offset;
+                        tmp->nodes[i]->parent = tmp;
                         tmp->nodes[i]->data = (unsigned long)allocator->GetLowestAddress() + offset_data;
                         tmp->nodes[i]->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
                         printf("Included node %x key %s data %s offset %x\n", tmp->nodes[i], tmp->nodes[i]->data, tmp->nodes[i]->value, offset);
+                    }
+                    else
+                    {
+                        printf("Set nodes[%d]= NULL parent %x %s\n", i, tmp, tmp->data);
+                        tmp->nodes[i] = NULL;
                     }
                 }
             }
@@ -387,8 +386,7 @@ public:
         strcpy(node->value, value);
         if(!root)
         {
-            root = node;
-            root->parent = NULL;
+            setRoot(node);
             return;
         }
         root->AddNode(node);
@@ -404,24 +402,45 @@ public:
     {
         if(root) root->print();
     }
+    void setRoot(BTreeNode<const char *, const char *, buckets> *node)
+    {
+        printf("Node %x data %s now set as root\n", node, node->data);
+        root = node;
+        root->parent = NULL;
+        return;
+    }
     void RemoveNode(BTreeNode<const char *, const char *, buckets> *node, bool dispose = true)
     {
         if(!root) return;
+        printf("Removing node %x from root %x\n", node, root);
         if(node == root)
         {
             BTreeNode<const char *, const char *, buckets> *_root = root;
             root = NULL;
+            bool first = true;
+
             for(int i=0; i<buckets; i++)
             {
                 if(_root->nodes[i])
                 {
-                    AddNode(_root->nodes[i]->data, _root->nodes[i]->value);
+                    printf("%x %s\n", _root->nodes[i], _root->nodes[i]->data);
+                    if(first) {
+                         setRoot(_root->nodes[i]);
+                         first = false;
+                    }
+                    else
+                    {
+                         root->AddNode(_root->nodes[i]);
+                    }
                 }
             }
             if(dispose)
             {
+                printf("Free data %x %s\n", _root->data, _root->data);
                 allocator->Free(_root->data);
+                printf("Free value %x %s\n", _root->value, _root->value);
                 allocator->Free(_root->value);
+                printf("Free node %x\n", _root);
                 allocator->Free(_root);
             }
         }
@@ -430,8 +449,11 @@ public:
             BTreeNode<const char *, const char *, buckets>::RemoveNode(node);
             if(dispose)
             {
+                printf("Free data %x %s\n", node->data, node->data);
                 allocator->Free(node->data);
+                printf("Free value %x %s\n", node->value, node->value);
                 allocator->Free(node->value);
+                printf("Free node %x\n", node);
                 allocator->Free(node);
             }
         }
