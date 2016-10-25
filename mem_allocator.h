@@ -220,7 +220,13 @@ public:
             for( i=0; i<each; i++)
             {
                 if((alloc+start) >= (size/2)) break;
-                MemPtr *block = (MemPtr*)(ptr+size/2+sizeof(MemPtr)*block_index);
+                unsigned long block_address = (MemPtr*)(ptr+size/2+sizeof(MemPtr)*block_index);
+                if(block_address >= highest_address)
+                {
+                    printf("Wrong block address calculation\n");
+                    throw;
+                }
+                MemPtr *block = (MemPtr*)block_address;
                 block->address = (void*)((unsigned long)alloc);
                 block->prev = NULL;
                 block->next = NULL;
@@ -277,10 +283,15 @@ public:
         for(;i<num_splits-1;i++)
         {
             /*we found bigger free block, lets create a new descriptor and initialize */
-            MemPtr *block = (MemPtr*)(lowest_address+((highest_address-lowest_address)/2)+sizeof(MemPtr)*last_block_index);
+            unsigned long block_address = (lowest_address+((highest_address-lowest_address)/2)+sizeof(MemPtr)*last_block_index);
+            if(block_address >= highest_address) return false;
+            MemPtr *block = (MemPtr*)block_address;
+            block_address = (unsigned long)free_blocks[n]->address + (1<<(initial_n+skip))*i;
+            if((block_address+(1<<(initial_n+skip))) >= ((highest_address - lowest_address)/2))
+                return false;
             last_block_index++;
+            block->address = block_address;
             block->size    = 1<<(initial_n+skip);
-            block->address = free_blocks[n]->address + (1<<(initial_n+skip))*i;
             block->allocated = false;
             block->prev = NULL;
             block->sane_magic = (unsigned long)block;
@@ -295,7 +306,10 @@ public:
         AddBlockToQueue(block, initial_n, free_blocks);
         free_blocks_num[initial_n]++;
         /*the remaining part of size is a another block, increment the address*/
-        block->address = (void*)((unsigned long)free_blocks[initial_n]->address + i*(1<<(initial_n+skip)));
+        unsigned long block_address = ((unsigned long)free_blocks[initial_n]->address + i*(1<<(initial_n+skip)));
+        if((block_address+(1<<(initial_n+skip))) >= ( (highest_address - lowest_address)/2))
+            return false;
+        block->address = (void*)block_address;
         block->allocated = false;
         block->size = 1<<(initial_n+skip);
         block->sane_magic = block;
@@ -450,7 +464,7 @@ public:
             printf("Size %d Free blocks: %d\n", 1<<(i+skip), free_blocks_num[i]);
             MemPtr *block = free_blocks[i];
             int u = 0;
-            while(true)
+            while(true && (block != NULL) )
             {
                 printf(" Block %x address %x n %d\n", block, block->address, i, 1<<(i+skip));
                 block = block->next;
@@ -481,6 +495,7 @@ public:
             throw;
         if(n >= free_blocks.size())
             throw;
+        PrintBlocksUsage();
         MemPtr *block = free_blocks[n];
         int i=0;
         while(true)
