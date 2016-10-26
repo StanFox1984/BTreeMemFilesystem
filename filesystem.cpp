@@ -23,9 +23,24 @@ CharBTree<5> *tree = NULL;
 MemoryAllocator2 *mem = NULL;
 Coder *coder = NULL;
 
+#define MAX_CHANGES 50
 #define BUFSIZE 50000000
 
+int changes_counter = MAX_CHANGES;
+
 unsigned char buffer[BUFSIZE];
+
+static void check_changes(CharBTree<5> *tree, MemoryAllocator2 *mem)
+{
+    changes_counter--;
+    if(changes_counter==0)
+    {
+        mem->syncToDisk("/memory_file_backup");
+        tree->syncToDisk("/btree_file_backup");
+        changes_counter = MAX_CHANGES;
+    }
+    return;
+}
 
 static int filesystem_getattr(const char *path, struct stat *stbuf)
 {
@@ -96,6 +111,7 @@ static int filesystem_open(const char *path, struct fuse_file_info *fi)
     }
     mem->syncToDisk("/memory_file");
     tree->syncToDisk("/btree_file");
+    check_changes(tree, mem);
     return 0;
 }
 
@@ -145,20 +161,21 @@ static int filesystem_write(const char *path, const char *buf, size_t size,
     }
     char *new_val = node->value;
     if((offset + size) > node->size) {
-        new_val = (char*)mem->Allocate(offset+size+1);
+        new_val = (char*)mem->Allocate((offset+size+1)*2);
         memcpy(new_val, node->value, node->size);
         if(node->value)
         {
             mem->Free(node->value);
         }
         node->value = new_val;
-        node->size = offset + size + 1;
+        node->size = (offset + size + 1)*2;
     }
     memcpy(&new_val[offset], buf, size);
     new_val[offset+size+1] = 0;
     coder->encode(&new_val[offset], &new_val[offset], size+1);
     mem->syncToDisk("/memory_file");
     tree->syncToDisk("/btree_file");
+    check_changes(tree, mem);
     return size;
 }
 
@@ -169,6 +186,7 @@ static int filesystem_unlink(const char *path)
     tree->RemoveNode(node, false);
     mem->syncToDisk("/memory_file");
     tree->syncToDisk("/btree_file");
+    check_changes(tree, mem);
     return 0;
 }
 
@@ -188,6 +206,7 @@ static int filesystem_mknod(const char *path, mode_t mode, dev_t rdev)
     }
     mem->syncToDisk("/memory_file");
     tree->syncToDisk("/btree_file");
+    check_changes(tree, mem);
     return 0;
 }
 static int filesystem_chown(const char *path, uid_t uid, gid_t gid)

@@ -404,6 +404,22 @@ public:
         }
         root->AddNode(node);
     }
+    void AddNodeSize(const char *key, const char *value, int size)
+    {
+        BTreeNode<const char *, const char *, buckets> *node = (CharBNode*)allocator->Allocate(sizeof( BTreeNode<const char *, const char *, buckets>));
+        node->Init();
+        node->data = (char*)allocator->Allocate(strlen(key)+1);
+        node->value= (char*)allocator->Allocate(size);
+        node->size = size;
+        strcpy(node->data, key);
+        memcpy(node->value, value, size);
+        if(!root)
+        {
+            setRoot(node);
+            return;
+        }
+        root->AddNode(node);
+    }
     BTreeNode<const char *, const char *, buckets>  *FindNode(const char *key)
     {
         if(!root)
