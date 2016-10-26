@@ -454,12 +454,12 @@ public:
                 {
                     DEBUG("%x %s\n", _root->nodes[i], _root->nodes[i]->data);
                     if(first) {
-                         setRoot(_root->nodes[i]);
-                         first = false;
+                        setRoot(_root->nodes[i]);
+                        first = false;
                     }
                     else
                     {
-                         root->AddNode(_root->nodes[i]);
+                        root->AddNode(_root->nodes[i]);
                     }
                 }
             }

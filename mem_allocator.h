@@ -281,7 +281,7 @@ public:
             return false;
         int num_splits = 1<<(n - initial_n);
         int i=0;
-        for(;i<num_splits-1;i++)
+        for(; i<num_splits-1; i++)
         {
             /*we found bigger free block, lets create a new descriptor and initialize */
             unsigned long block_address = (lowest_address+((highest_address-lowest_address)/2)+sizeof(MemPtr)*last_block_index);
