@@ -161,20 +161,22 @@ static int filesystem_write(const char *path, const char *buf, size_t size,
     }
     char *new_val = node->value;
     if((offset + size) > node->size) {
-        new_val = (char*)mem->Allocate((offset+size+1)*2);
+        new_val = (char*)mem->Allocate((offset+size));
         memcpy(new_val, node->value, node->size);
         if(node->value)
         {
             mem->Free(node->value);
         }
         node->value = new_val;
-        node->size = (offset + size + 1)*2;
+        node->size = (offset + size);
     }
     memcpy(&new_val[offset], buf, size);
-    new_val[offset+size+1] = 0;
     coder->encode(&new_val[offset], &new_val[offset], size+1);
-    mem->syncToDisk("/memory_file");
-    tree->syncToDisk("/btree_file");
+    if(changes_counter == 0)
+    {
+        mem->syncToDisk("/memory_file");
+        tree->syncToDisk("/btree_file");
+    }
     check_changes(tree, mem);
     return size;
 }
