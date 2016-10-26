@@ -232,7 +232,6 @@ int main(int argc, char *argv[])
     coder = new Coder("pass");
     coder->encode("Hello", b, 5);
     coder->decode(b,b,5);
-    printf(b);
 //    char *str = mem->Allocate(20);
     mem->PrintBlocksUsage();
     filesystem_oper.getattr  = filesystem_getattr;

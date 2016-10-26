@@ -112,7 +112,7 @@ struct BTreeNode<const char *, const char *, buckets>
     }
     BTreeNode<const char *, const char *, buckets> *FindNode(const char *_data)
     {
-        printf("Trying to find node data %s at node %x data %s\n", _data, this, this->data);
+        DEBUG("Trying to find node data %s at node %x data %s\n", _data, this, this->data);
         if(!strcmp(data, _data))
             return this;
         BTreeNode<const char *, const char *, buckets> *tmp = NULL;
@@ -159,7 +159,7 @@ struct BTreeNode<const char *, const char *, buckets>
     void AddNode(BTreeNode<const char *, const char *, buckets> *node)
     {
         int i=0, last_not_null = 0;
-        printf("Trying to add node %x data %s to node %x data %s\n", node, node->data, this, this->data);
+        DEBUG("Trying to add node %x data %s to node %x data %s\n", node, node->data, this, this->data);
         for(; i<buckets; i++)
         {
             bool add = true;
@@ -205,15 +205,15 @@ struct BTreeNode<const char *, const char *, buckets>
     }
     void print(void)
     {
-        printf("data: %s %x start\n", data, this);
+        DEBUG("data: %s %x start\n", data, this);
         for(int i=0; i<buckets; i++)
         {
             if(this->nodes[i]) {
-                printf("    nodes[%d]=\n", i);
+                DEBUG("    nodes[%d]=\n", i);
                 nodes[i]->print();
             }
         }
-        printf("data: %s %x end\n", data, this);
+        DEBUG("data: %s %x end\n", data, this);
     }
 };
 
@@ -243,20 +243,20 @@ public:
         {
             throw "Could not write to disk!";
         }
-        printf("Syncing to disk file %s\n", filename);
+        DEBUG("Syncing to disk file %s\n", filename);
         vector<CharBNode*> vec;
         if(!_root)
         {
             unsigned long buckets_num = buckets;
             fwrite(&buckets_num, sizeof(unsigned long), 1, fout);
-            printf("Writing buckets num %d\n", buckets_num);
+            DEBUG("Writing buckets num %d\n", buckets_num);
             if(root)
             {
                 _root = root;
                 TraverseTree(vec, _root, false);
                 unsigned long size = vec.size();
                 fwrite(&size, sizeof(unsigned long), 1, fout);
-                printf("Writing records num %d\n", size);
+                DEBUG("Writing records num %d\n", size);
             }
             else
             {
@@ -269,7 +269,7 @@ public:
             _root = vec[n];
             unsigned long offset = (unsigned long)_root - (unsigned long)allocator->GetLowestAddress();
             fwrite(&offset, sizeof(unsigned long), 1, fout);
-            printf("Wrote node %x key %s size %d offset %x\n", (unsigned long)_root, (_root)->data, (_root)->size, offset);
+            DEBUG("Wrote node %x key %s size %d offset %x\n", (unsigned long)_root, (_root)->data, (_root)->size, offset);
             offset = (unsigned long)_root->data - (unsigned long)allocator->GetLowestAddress();
             fwrite(&offset, sizeof(unsigned long), 1, fout);
             offset = (unsigned long)_root->value - (unsigned long)allocator->GetLowestAddress();
@@ -282,7 +282,7 @@ public:
                 {
                     offset = (unsigned long)_root->nodes[i] - (unsigned long)allocator->GetLowestAddress();
                     fwrite(&offset, sizeof(unsigned long), 1, fout);
-                    printf("Wrote node %x key %s offset %x\n", (unsigned long)_root->nodes[i], (_root->nodes[i])->data, offset);
+                    DEBUG("Wrote node %x key %s offset %x\n", (unsigned long)_root->nodes[i], (_root->nodes[i])->data, offset);
                     offset = (unsigned long)_root->nodes[i]->data - (unsigned long)allocator->GetLowestAddress();
                     fwrite(&offset, sizeof(unsigned long), 1, fout);
                     offset = (unsigned long)_root->nodes[i]->value - (unsigned long)allocator->GetLowestAddress();
@@ -294,7 +294,7 @@ public:
                 {
                     offset = 0;
                     fwrite(&offset, sizeof(unsigned long), 1, fout);
-                    printf("Wrote node NULL offset %x\n", offset);
+                    DEBUG("Wrote node NULL offset %x\n", offset);
                 }
             }
         }
@@ -308,36 +308,36 @@ public:
         fin = fopen(filename, "r+b");
         if(!fin)
         {
-            printf("Could not open file %s\n", filename);
+            DEBUG("Could not open file %s\n", filename);
             return;
         }
-        printf("Syncing from disk file %s\n", filename);
+        DEBUG("Syncing from disk file %s\n", filename);
         _root = &root;
         unsigned long buckets_num = 0;
         fread(&buckets_num, sizeof(unsigned long), 1, fin);
         if(buckets_num != buckets)
         {
-            printf("Mismatch between template buckets and file! file: %d ours: %d\n", buckets_num, buckets);
+            DEBUG("Mismatch between template buckets and file! file: %d ours: %d\n", buckets_num, buckets);
             throw "Mismatch between template buckets and file!";
         }
         else
         {
-            printf("Num buckets is %d\n", buckets_num);
+            DEBUG("Num buckets is %d\n", buckets_num);
         }
         unsigned long size = 0;
         fread(&size, sizeof(unsigned long), 1, fin);
-        printf("Number records is %d\n", size);
+        DEBUG("Number records is %d\n", size);
         for(int n = 0; n<size ; n++)
         {
             unsigned long offset = 0, offset_data = 0, offset_value = 0, offset_size = 0;
             fread(&offset, sizeof(unsigned long), 1, fin);
-            printf("Read initial offset %x %d\n", offset, n);
+            DEBUG("Read initial offset %x %d\n", offset, n);
             fread(&offset_data, sizeof(unsigned long), 1, fin);
-            printf("Read offset_data %x\n", offset_data);
+            DEBUG("Read offset_data %x\n", offset_data);
             fread(&offset_value, sizeof(unsigned long), 1, fin);
-            printf("Read offset value %x\n", offset_value);
+            DEBUG("Read offset value %x\n", offset_value);
             fread(&offset_size, sizeof(unsigned long), 1, fin);
-            printf("Read offset size %d\n", offset_size);
+            DEBUG("Read offset size %d\n", offset_size);
             if(offset != 0)
             {
                 if(n==0)
@@ -356,30 +356,30 @@ public:
                     tmp->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
                     tmp->size = (int)offset_size;
                 }
-                printf("Extracted node %x key %s data %s offset %x\n", tmp, tmp->data, tmp->value, offset);
+                DEBUG("Extracted node %x key %s data %s offset %x\n", tmp, tmp->data, tmp->value, offset);
                 for(int i=0; i<buckets; i++)
                 {
                     fread(&offset, sizeof(unsigned long), 1, fin);
-                    printf("Read offset %x\n", offset);
+                    DEBUG("Read offset %x\n", offset);
                     if(offset != 0)
                     {
 //                        (*_root)->nodes[i] = (unsigned long)allocator->GetLowestAddress() + offset;
                         fread(&offset_data, sizeof(unsigned long), 1, fin);
-                        printf("Read offset_data %x\n", offset_data);
+                        DEBUG("Read offset_data %x\n", offset_data);
                         fread(&offset_value, sizeof(unsigned long), 1, fin);
-                        printf("Read offset value %x\n", offset_value);
+                        DEBUG("Read offset value %x\n", offset_value);
                         fread(&offset_size, sizeof(unsigned long), 1, fin);
-                        printf("Read offset size %d\n", offset_size);
+                        DEBUG("Read offset size %d\n", offset_size);
                         tmp->nodes[i] = (unsigned long)allocator->GetLowestAddress() + offset;
                         tmp->nodes[i]->parent = tmp;
                         tmp->nodes[i]->data = (unsigned long)allocator->GetLowestAddress() + offset_data;
                         tmp->nodes[i]->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
                         tmp->nodes[i]->size = (int)offset_size;
-                        printf("Included node %x key %s data %s size %d offset %x\n", tmp->nodes[i], tmp->nodes[i]->data, tmp->nodes[i]->value, tmp->nodes[i]->size, offset);
+                        DEBUG("Included node %x key %s data %s size %d offset %x\n", tmp->nodes[i], tmp->nodes[i]->data, tmp->nodes[i]->value, tmp->nodes[i]->size, offset);
                     }
                     else
                     {
-                        printf("Set nodes[%d]= NULL parent %x %s\n", i, tmp, tmp->data);
+                        DEBUG("Set nodes[%d]= NULL parent %x %s\n", i, tmp, tmp->data);
                         tmp->nodes[i] = NULL;
                     }
                 }
@@ -433,7 +433,7 @@ public:
     }
     void setRoot(BTreeNode<const char *, const char *, buckets> *node)
     {
-        printf("Node %x data %s now set as root\n", node, node->data);
+        DEBUG("Node %x data %s now set as root\n", node, node->data);
         root = node;
         root->parent = NULL;
         return;
@@ -441,7 +441,7 @@ public:
     void RemoveNode(BTreeNode<const char *, const char *, buckets> *node, bool dispose = true)
     {
         if(!root) return;
-        printf("Removing node %x from root %x\n", node, root);
+        DEBUG("Removing node %x from root %x\n", node, root);
         if(node == root)
         {
             BTreeNode<const char *, const char *, buckets> *_root = root;
@@ -452,7 +452,7 @@ public:
             {
                 if(_root->nodes[i])
                 {
-                    printf("%x %s\n", _root->nodes[i], _root->nodes[i]->data);
+                    DEBUG("%x %s\n", _root->nodes[i], _root->nodes[i]->data);
                     if(first) {
                          setRoot(_root->nodes[i]);
                          first = false;
@@ -465,11 +465,11 @@ public:
             }
             if(dispose)
             {
-                printf("Free data %x %s\n", _root->data, _root->data);
+                DEBUG("Free data %x %s\n", _root->data, _root->data);
                 allocator->Free(_root->data);
-                printf("Free value %x %s\n", _root->value, _root->value);
+                DEBUG("Free value %x %s\n", _root->value, _root->value);
                 allocator->Free(_root->value);
-                printf("Free node %x\n", _root);
+                DEBUG("Free node %x\n", _root);
                 allocator->Free(_root);
             }
         }
@@ -478,11 +478,11 @@ public:
             BTreeNode<const char *, const char *, buckets>::RemoveNode(node);
             if(dispose)
             {
-                printf("Free data %x %s\n", node->data, node->data);
+                DEBUG("Free data %x %s\n", node->data, node->data);
                 allocator->Free(node->data);
-                printf("Free value %x %s\n", node->value, node->value);
+                DEBUG("Free value %x %s\n", node->value, node->value);
                 allocator->Free(node->value);
-                printf("Free node %x\n", node);
+                DEBUG("Free node %x\n", node);
                 allocator->Free(node);
             }
         }
