@@ -76,6 +76,7 @@ struct BTreeNode<const char *, const char *, buckets>
     BTreeNode<const char *, const char *, buckets>    *nodes[buckets];
     const char *data;
     const char *value;
+    int        size;
     BTreeNode<const char *, const char *, buckets>    *parent;
     void Init(void)
     {
@@ -83,6 +84,7 @@ struct BTreeNode<const char *, const char *, buckets>
         parent = NULL;
         data = NULL;
         value = NULL;
+        size = 0;
     }
     BTreeNode()
     {
@@ -267,10 +269,12 @@ public:
             _root = vec[n];
             unsigned long offset = (unsigned long)_root - (unsigned long)allocator->GetLowestAddress();
             fwrite(&offset, sizeof(unsigned long), 1, fout);
-            printf("Wrote node %x key %s offset %x\n", (unsigned long)_root, (_root)->data, offset);
+            printf("Wrote node %x key %s size %d offset %x\n", (unsigned long)_root, (_root)->data, (_root)->size, offset);
             offset = (unsigned long)_root->data - (unsigned long)allocator->GetLowestAddress();
             fwrite(&offset, sizeof(unsigned long), 1, fout);
             offset = (unsigned long)_root->value - (unsigned long)allocator->GetLowestAddress();
+            fwrite(&offset, sizeof(unsigned long), 1, fout);
+            offset = (unsigned long)_root->size;
             fwrite(&offset, sizeof(unsigned long), 1, fout);
             for(int i=0; i<buckets; i++)
             {
@@ -282,6 +286,8 @@ public:
                     offset = (unsigned long)_root->nodes[i]->data - (unsigned long)allocator->GetLowestAddress();
                     fwrite(&offset, sizeof(unsigned long), 1, fout);
                     offset = (unsigned long)_root->nodes[i]->value - (unsigned long)allocator->GetLowestAddress();
+                    fwrite(&offset, sizeof(unsigned long), 1, fout);
+                    offset = (unsigned long)_root->nodes[i]->size;
                     fwrite(&offset, sizeof(unsigned long), 1, fout);
                 }
                 else
@@ -323,13 +329,15 @@ public:
         printf("Number records is %d\n", size);
         for(int n = 0; n<size ; n++)
         {
-            unsigned long offset = 0, offset_data = 0, offset_value = 0;
+            unsigned long offset = 0, offset_data = 0, offset_value = 0, offset_size = 0;
             fread(&offset, sizeof(unsigned long), 1, fin);
             printf("Read initial offset %x %d\n", offset, n);
             fread(&offset_data, sizeof(unsigned long), 1, fin);
             printf("Read offset_data %x\n", offset_data);
             fread(&offset_value, sizeof(unsigned long), 1, fin);
             printf("Read offset value %x\n", offset_value);
+            fread(&offset_size, sizeof(unsigned long), 1, fin);
+            printf("Read offset size %d\n", offset_size);
             if(offset != 0)
             {
                 if(n==0)
@@ -338,6 +346,7 @@ public:
                     (*_root)->parent = NULL;
                     (*_root)->data = (unsigned long)allocator->GetLowestAddress() + offset_data;
                     (*_root)->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
+                    (*_root)->size = (int)offset_size;
                     tmp = *_root;
                 }
                 else
@@ -345,6 +354,7 @@ public:
                     tmp = (unsigned long)allocator->GetLowestAddress() + offset;
                     tmp->data = (unsigned long)allocator->GetLowestAddress() + offset_data;
                     tmp->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
+                    tmp->size = (int)offset_size;
                 }
                 printf("Extracted node %x key %s data %s offset %x\n", tmp, tmp->data, tmp->value, offset);
                 for(int i=0; i<buckets; i++)
@@ -358,11 +368,14 @@ public:
                         printf("Read offset_data %x\n", offset_data);
                         fread(&offset_value, sizeof(unsigned long), 1, fin);
                         printf("Read offset value %x\n", offset_value);
+                        fread(&offset_size, sizeof(unsigned long), 1, fin);
+                        printf("Read offset size %d\n", offset_size);
                         tmp->nodes[i] = (unsigned long)allocator->GetLowestAddress() + offset;
                         tmp->nodes[i]->parent = tmp;
                         tmp->nodes[i]->data = (unsigned long)allocator->GetLowestAddress() + offset_data;
                         tmp->nodes[i]->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
-                        printf("Included node %x key %s data %s offset %x\n", tmp->nodes[i], tmp->nodes[i]->data, tmp->nodes[i]->value, offset);
+                        tmp->nodes[i]->size = (int)offset_size;
+                        printf("Included node %x key %s data %s size %d offset %x\n", tmp->nodes[i], tmp->nodes[i]->data, tmp->nodes[i]->value, tmp->nodes[i]->size, offset);
                     }
                     else
                     {
@@ -493,7 +506,7 @@ public:
                 vec.push_back(tmp);
                 for(int i=0; i<buckets; i++)
                 {
-                    if(tmp->nodes[i] && tmp->nodes[i]!=tmp)
+                    if((tmp->nodes[i]!=NULL) && (tmp->nodes[i])!=tmp)
                     {
                         st.push(tmp->nodes[i]);
                     }

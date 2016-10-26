@@ -23,7 +23,7 @@ CharBTree<5> *tree = NULL;
 MemoryAllocator2 *mem = NULL;
 Coder *coder = NULL;
 
-#define BUFSIZE 5000000
+#define BUFSIZE 50000000
 
 unsigned char buffer[BUFSIZE];
 
@@ -49,7 +49,7 @@ static int filesystem_getattr(const char *path, struct stat *stbuf)
         _str = node->value;
         stbuf->st_mode = S_IFREG | 0444;
         stbuf->st_nlink = 1;
-        stbuf->st_size = strlen(_str);
+        stbuf->st_size = node->size;
     }
 
     return res;
@@ -120,7 +120,7 @@ static int filesystem_read(const char *path, char *buf, size_t size, off_t offse
         return -ENOENT;
     }
     _str = node->value;
-    len = strlen(_str);
+    len = node->size;
     if (offset < len) {
         if (offset + size > len)
             size = len - offset;
@@ -144,19 +144,19 @@ static int filesystem_write(const char *path, const char *buf, size_t size,
         return -ENOENT;
     }
     char *new_val = node->value;
-    if(offset + size > strlen(node->value)+1) {
+    if((offset + size) > node->size) {
         new_val = (char*)mem->Allocate(offset+size+1);
-        memcpy(new_val, node->value, strlen(node->value)+1);
+        memcpy(new_val, node->value, node->size);
         if(node->value)
         {
             mem->Free(node->value);
         }
+        node->value = new_val;
+        node->size = offset + size + 1;
     }
     memcpy(&new_val[offset], buf, size);
     new_val[offset+size+1] = 0;
     coder->encode(&new_val[offset], &new_val[offset], size+1);
-
-    node->value = new_val;
     mem->syncToDisk("/memory_file");
     tree->syncToDisk("/btree_file");
     return size;
@@ -205,7 +205,7 @@ static struct fuse_operations filesystem_oper;
 int main(int argc, char *argv[])
 {
     char b[30];
-    mem = new MemoryAllocator2(buffer, sizeof(buffer), 32, 4096);
+    mem = new MemoryAllocator2(buffer, sizeof(buffer), 32, 8192);
     mem->PrintBlocksUsage();
     mem->syncFromDisk("/memory_file");
     tree = new CharBTree<5>(mem);
