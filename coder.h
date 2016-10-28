@@ -9,16 +9,21 @@ class Coder
 {
 public:
     bool transparent;
-    Coder(char *pass, bool _transparent = true)
+    Coder(char *pass, bool _transparent = false)
     {
         strncpy(password, pass, 255);
         password[255] = '\0';
+        if(strlen(password) <= 1)
+        {
+            transparent = true;
+        }
         transparent = _transparent;
     }
     virtual int encode(char *src, char *dst, int size)
     {
         if(transparent) return size;
         int len = strlen(password);
+        if(len==0) return size;
         int num = size / len;
         int remain = size % len;
         char *tmp = new char[len];

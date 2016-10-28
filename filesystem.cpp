@@ -26,21 +26,64 @@ Coder *coder = NULL;
 #define MAX_CHANGES 50
 #define BUFSIZE 50000000
 
+int max_backup_changes = MAX_CHANGES;
+int max_write_changes = MAX_CHANGES;
+
+int backup_changes_counter = MAX_CHANGES;
 int changes_counter = MAX_CHANGES;
 
 unsigned char buffer[BUFSIZE];
 
-static void check_changes(CharBTree<5> *tree, MemoryAllocator2 *mem)
+char *memory_file = "/memory_file";
+char *btree_file = "/bree_file";
+char *backup_memory_file = NULL;
+char *backup_btree_file = NULL;
+
+static void sync_changes(CharBTree<5> *tree, MemoryAllocator2 *mem)
+{
+    mem->syncToDisk(memory_file);
+    tree->syncToDisk(btree_file);
+    return;
+}
+
+static void sync_backup_changes(CharBTree<5> *tree, MemoryAllocator2 *mem)
+{
+    if(backup_memory_file == NULL || backup_btree_file == NULL)
+    {
+        backup_memory_file = (char*)mem->Allocate(strlen(memory_file)+strlen("_backup")+1);
+        backup_btree_file = (char*)mem->Allocate(strlen(btree_file)+strlen("_backup")+1);
+        strcpy(backup_memory_file, memory_file);
+        strcat(backup_memory_file, "_backup");
+        strcpy(backup_btree_file, btree_file);
+        strcat(backup_btree_file, "_backup");
+    }
+    mem->syncToDisk(backup_memory_file);
+    tree->syncToDisk(backup_btree_file);
+    return;
+}
+
+static void check_changes_for_backup(CharBTree<5> *tree, MemoryAllocator2 *mem)
+{
+    backup_changes_counter--;
+    if(backup_changes_counter==0)
+    {
+        sync_backup_changes(tree, mem);
+        backup_changes_counter = max_backup_changes;
+    }
+    return;
+}
+
+static void check_write_changes(CharBTree<5> *tree, MemoryAllocator2 *mem)
 {
     changes_counter--;
     if(changes_counter==0)
     {
-        mem->syncToDisk("/memory_file_backup");
-        tree->syncToDisk("/btree_file_backup");
-        changes_counter = MAX_CHANGES;
+        sync_changes(tree, mem);
+        changes_counter = max_write_changes;
     }
     return;
 }
+
 
 static int filesystem_getattr(const char *path, struct stat *stbuf)
 {
@@ -109,9 +152,8 @@ static int filesystem_open(const char *path, struct fuse_file_info *fi)
         strcpy(str,"");
         tree->AddNode(_path, str);
     }
-    mem->syncToDisk("/memory_file");
-    tree->syncToDisk("/btree_file");
-    check_changes(tree, mem);
+    check_changes_for_backup(tree, mem);
+    check_write_changes(tree, mem);
     return 0;
 }
 
@@ -172,12 +214,8 @@ static int filesystem_write(const char *path, const char *buf, size_t size,
     }
     memcpy(&new_val[offset], buf, size);
     coder->encode(&new_val[offset], &new_val[offset], size+1);
-    if(changes_counter == 0)
-    {
-        mem->syncToDisk("/memory_file");
-        tree->syncToDisk("/btree_file");
-    }
-    check_changes(tree, mem);
+    check_write_changes(tree, mem);
+    check_changes_for_backup(tree, mem);
     return size;
 }
 
@@ -186,9 +224,8 @@ static int filesystem_unlink(const char *path)
     CharBTree<5>::CharBNode *node = tree->FindNode(path);
     if(!node) return -ENOENT;
     tree->RemoveNode(node, false);
-    mem->syncToDisk("/memory_file");
-    tree->syncToDisk("/btree_file");
-    check_changes(tree, mem);
+    check_write_changes(tree, mem);
+    check_changes_for_backup(tree, mem);
     return 0;
 }
 
@@ -206,11 +243,20 @@ static int filesystem_mknod(const char *path, mode_t mode, dev_t rdev)
         strcpy(str,"");
         tree->AddNode(_path, str);
     }
-    mem->syncToDisk("/memory_file");
-    tree->syncToDisk("/btree_file");
-    check_changes(tree, mem);
+    check_write_changes(tree, mem);
+    check_changes_for_backup(tree, mem);
     return 0;
 }
+
+static int filesystem_fsync(const char *path, int isdatasync,
+                     struct fuse_file_info *fi)
+{
+    sync_changes(tree, mem);
+    return 0;
+}
+
+
+
 static int filesystem_chown(const char *path, uid_t uid, gid_t gid)
 {
     return 0;
@@ -223,19 +269,75 @@ static int filesystem_chmod(const char *path, mode_t mode)
 
 static struct fuse_operations filesystem_oper;
 
+extern int opterr;
+
+
+
+#define FILESYSTEM_NUMBUCKETS 5
+
 int main(int argc, char *argv[])
 {
-    char b[30];
-    mem = new MemoryAllocator2(buffer, sizeof(buffer), 32, 8192);
+    int argc_fuse = 1;
+    int opt;
+    opterr = 0;
+    int num_blocks_each_size = 32;
+    int start_block_size = 8192;
+    char *pass = "";
+    char **argv_fuse = new char *[argc];
+    argv_fuse[0] = argv[0];
+    int n = 1;
+
+    while (n < argc) {
+
+        opt = getopt(argc, argv, "m:b:e:s:p:");
+
+        if(opt != -1)
+        {
+            switch (opt) {
+            case 'm':
+                memory_file = optarg;
+                break;
+            case 'b':
+                btree_file = optarg;
+                break;
+            case 'e':
+                num_blocks_each_size = atoi(optarg);
+                break;
+            case 's':
+                start_block_size = atoi(optarg);
+                break;
+            case 'p':
+                pass = optarg;
+                break;
+            default:
+                char *s = new char[3];
+                s[0] = '-';
+                s[1] = optopt;
+                s[2] = '\0';
+                argv_fuse[argc_fuse] = s;
+                argc_fuse++;
+            }
+        }
+        else
+        {
+            argv_fuse[argc_fuse] = argv[n];
+            argc_fuse++;
+        }
+        n++;
+    }
+
+    printf("Memory file %s btree_file %s num_blocks_each_size %d start %d pass %s\n", memory_file, btree_file, num_blocks_each_size, start_block_size, pass);
+    printf("fuse_argc %d fuse args:\n", argc_fuse);
+    for(int i=0; i<argc_fuse; i++)
+    {
+        printf("%s\n", argv_fuse[i]);
+    }
+    mem = new MemoryAllocator2(buffer, sizeof(buffer), num_blocks_each_size, start_block_size);
+    tree = new CharBTree<FILESYSTEM_NUMBUCKETS>(mem);
     mem->PrintBlocksUsage();
-    mem->syncFromDisk("/memory_file");
-    tree = new CharBTree<5>(mem);
-    tree->syncFromDisk("/btree_file");
-    coder = new Coder("pass");
-    coder->encode("Hello", b, 5);
-    coder->decode(b,b,5);
-//    char *str = mem->Allocate(20);
-    mem->PrintBlocksUsage();
+    mem->syncFromDisk(memory_file);
+    tree->syncFromDisk(btree_file);
+    coder = new Coder(pass);
     filesystem_oper.getattr  = filesystem_getattr;
     filesystem_oper.readdir  = filesystem_readdir;
     filesystem_oper.open     = filesystem_open;
@@ -245,5 +347,7 @@ int main(int argc, char *argv[])
     filesystem_oper.unlink   = filesystem_unlink;
     filesystem_oper.chown    = filesystem_chown;
     filesystem_oper.chmod    = filesystem_chmod;
-    return fuse_main(argc, argv, &filesystem_oper, NULL);
+    filesystem_oper.fsync    = filesystem_fsync;
+
+    return fuse_main(argc_fuse, argv_fuse, &filesystem_oper, NULL);
 }
