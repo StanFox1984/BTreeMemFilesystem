@@ -277,19 +277,26 @@ extern int opterr;
 
 int main(int argc, char *argv[])
 {
-    int argc_fuse = 1;
+    int argc_fuse = 2;
     int opt;
     opterr = 0;
     int num_blocks_each_size = 32;
     int start_block_size = 8192;
     char *pass = "";
-    char **argv_fuse = new char *[argc];
+    char **argv_fuse = new char *[argc+1];
     argv_fuse[0] = argv[0];
-    int n = 1;
+    if(argc < 2)
+    {
+        printf("No mount point specified!\n");
+        return -1;
+    }
+    argv_fuse[1] = argv[1];
+    argv_fuse[2] = "-d";
+    int n = 2;
 
     while (n < argc) {
 
-        opt = getopt(argc, argv, "m:b:e:s:p:");
+        opt = getopt(argc, argv, "m:t:e:s:p:b:w:");
 
         if(opt != -1)
         {
@@ -297,11 +304,17 @@ int main(int argc, char *argv[])
             case 'm':
                 memory_file = optarg;
                 break;
-            case 'b':
+            case 't':
                 btree_file = optarg;
                 break;
             case 'e':
                 num_blocks_each_size = atoi(optarg);
+                break;
+            case 'w':
+                max_write_changes = atoi(optarg);
+                break;
+            case 'b':
+                max_backup_changes = atoi(optarg);
                 break;
             case 's':
                 start_block_size = atoi(optarg);
@@ -318,15 +331,12 @@ int main(int argc, char *argv[])
                 argc_fuse++;
             }
         }
-        else
-        {
-            argv_fuse[argc_fuse] = argv[n];
-            argc_fuse++;
-        }
         n++;
     }
 
-    printf("Memory file %s btree_file %s num_blocks_each_size %d start %d pass %s\n", memory_file, btree_file, num_blocks_each_size, start_block_size, pass);
+    printf("Memory file %s btree_file %s num_blocks_each_size %d start %d pass %s max_write_changes %d max_backup_changes %d\n",
+            memory_file, btree_file, num_blocks_each_size, start_block_size, pass, max_write_changes, max_backup_changes);
+
     printf("fuse_argc %d fuse args:\n", argc_fuse);
     for(int i=0; i<argc_fuse; i++)
     {
