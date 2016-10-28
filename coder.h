@@ -27,17 +27,17 @@ public:
         int num = size / len;
         int remain = size % len;
         char *tmp = new char[len];
-        for(int i=0;i<num;i++)
+        for(int i=0; i<num; i++)
         {
             memcpy(tmp, &src[i*len], len);
-            for(int j=0;j<len;j++)
+            for(int j=0; j<len; j++)
             {
                 tmp[j]^=password[j];
             }
             memcpy(&dst[i*len], tmp, len);
         }
         memcpy(tmp, &src[num*len],remain);
-        for(int j=0;j<remain;j++)
+        for(int j=0; j<remain; j++)
         {
             tmp[j]^=password[j];
         }

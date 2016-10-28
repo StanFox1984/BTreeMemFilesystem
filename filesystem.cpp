@@ -249,7 +249,7 @@ static int filesystem_mknod(const char *path, mode_t mode, dev_t rdev)
 }
 
 static int filesystem_fsync(const char *path, int isdatasync,
-                     struct fuse_file_info *fi)
+                            struct fuse_file_info *fi)
 {
     sync_changes(tree, mem);
     return 0;
@@ -335,7 +335,7 @@ int main(int argc, char *argv[])
     }
 
     printf("Memory file %s btree_file %s num_blocks_each_size %d start %d pass %s max_write_changes %d max_backup_changes %d\n",
-            memory_file, btree_file, num_blocks_each_size, start_block_size, pass, max_write_changes, max_backup_changes);
+           memory_file, btree_file, num_blocks_each_size, start_block_size, pass, max_write_changes, max_backup_changes);
 
     printf("fuse_argc %d fuse args:\n", argc_fuse);
     for(int i=0; i<argc_fuse; i++)
