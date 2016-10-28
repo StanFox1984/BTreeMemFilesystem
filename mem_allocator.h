@@ -413,7 +413,6 @@ public:
         {
             return NULL;
         }
-        PrintBlocksUsage();
         MemPtr *block = FindBlockWithAddressInFreeQueue(address, size);
         if(block == NULL)
         {
@@ -427,7 +426,6 @@ public:
         DEBUG("Setting sane magic %x(at addr %x) for block %x address %x ptr %x\n", block, block->address+lowest_address, block, block->address, ptr);
         AddBlockToAllocQueue(block, n);
         DEBUG("Allocator(specific):Returned address %x\n",(unsigned long)ptr);
-        PrintBlocksUsage();
         return ptr;
     }
     void Free(void *ptr)
@@ -502,7 +500,6 @@ public:
             throw;
         if(n >= free_blocks.size())
             throw;
-        PrintBlocksUsage();
         MemPtr *block = free_blocks[n];
         int i=0;
         while(true)
