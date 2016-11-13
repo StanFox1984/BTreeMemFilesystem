@@ -343,11 +343,12 @@ int main(int argc, char *argv[])
         printf("%s\n", argv_fuse[i]);
     }
     mem = new MemoryAllocator2(buffer, sizeof(buffer), num_blocks_each_size, start_block_size);
-    tree = new CharBTree<FILESYSTEM_NUMBUCKETS>(mem);
+    coder = new Coder(pass);
+    tree = new CharBTree<FILESYSTEM_NUMBUCKETS>(mem, coder);
     mem->PrintBlocksUsage();
     mem->syncFromDisk(memory_file);
     tree->syncFromDisk(btree_file);
-    coder = new Coder(pass);
+
     filesystem_oper.getattr  = filesystem_getattr;
     filesystem_oper.readdir  = filesystem_readdir;
     filesystem_oper.open     = filesystem_open;
