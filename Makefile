@@ -6,3 +6,9 @@ clean:
 
 test_btree:
 	g++ test_btree.cpp -fpermissive -g -o test_btree
+
+test_mount:
+	sudo LD_LIBRARY_PATH=/usr/local/lib ./filesystem /mnt/filesystem
+
+test_umount:
+	fusermount -u /mnt/filesystem

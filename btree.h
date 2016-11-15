@@ -86,6 +86,7 @@ struct BTreeNode<const char *, const char *, buckets>
         value = NULL;
         size = 0;
     }
+
     BTreeNode()
     {
         Init();
@@ -250,6 +251,33 @@ public:
             coder->decode((char*)ptr, (char*)ptr, size*num);
         return res;
     }
+    void serialize(FILE *fout, BTreeNode<const char *, const char *, buckets>  *node, DefaultAllocator *allocator)
+    {
+        unsigned long offset = (unsigned long)node - (unsigned long)allocator->GetLowestAddress();
+        code_fwrite(&offset, sizeof(unsigned long), 1, fout);
+        DEBUG("Wrote node %x key %s size %d offset %x\n", (unsigned long)node, (node)->data, (node)->size, offset);
+        offset = (unsigned long)node->data - (unsigned long)allocator->GetLowestAddress();
+        code_fwrite(&offset, sizeof(unsigned long), 1, fout);
+        offset = (unsigned long)node->value - (unsigned long)allocator->GetLowestAddress();
+        code_fwrite(&offset, sizeof(unsigned long), 1, fout);
+        offset = (unsigned long)node->size;
+        code_fwrite(&offset, sizeof(unsigned long), 1, fout);
+        return;
+    }
+    void deserialize(FILE *fin, BTreeNode<const char *, const char *, buckets>  *node, DefaultAllocator *allocator)
+    {
+        unsigned long offset_data = 0, offset_value = 0, offset_size = 0;
+        code_fread(&offset_data, sizeof(unsigned long), 1, fin);
+        DEBUG("Read offset_data %x\n", offset_data);
+        code_fread(&offset_value, sizeof(unsigned long), 1, fin);
+        DEBUG("Read offset value %x\n", offset_value);
+        code_fread(&offset_size, sizeof(unsigned long), 1, fin);
+        DEBUG("Read offset size %d\n", offset_size);
+        node->data = (unsigned long)allocator->GetLowestAddress() + offset_data;
+        node->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
+        node->size = (int)offset_size;
+        return;
+    }
     void syncToDisk(const char *filename, BTreeNode<const char *, const char *, buckets> *_root = NULL)
     {
         FILE *fout = NULL;
@@ -282,28 +310,13 @@ public:
         for(int n = 0; n<vec.size(); n++)
         {
             _root = vec[n];
-            unsigned long offset = (unsigned long)_root - (unsigned long)allocator->GetLowestAddress();
-            code_fwrite(&offset, sizeof(unsigned long), 1, fout);
-            DEBUG("Wrote node %x key %s size %d offset %x\n", (unsigned long)_root, (_root)->data, (_root)->size, offset);
-            offset = (unsigned long)_root->data - (unsigned long)allocator->GetLowestAddress();
-            code_fwrite(&offset, sizeof(unsigned long), 1, fout);
-            offset = (unsigned long)_root->value - (unsigned long)allocator->GetLowestAddress();
-            code_fwrite(&offset, sizeof(unsigned long), 1, fout);
-            offset = (unsigned long)_root->size;
-            code_fwrite(&offset, sizeof(unsigned long), 1, fout);
+            unsigned long offset = 0;
+            serialize(fout, _root, allocator);
             for(int i=0; i<buckets; i++)
             {
                 if(_root->nodes[i])
                 {
-                    offset = (unsigned long)_root->nodes[i] - (unsigned long)allocator->GetLowestAddress();
-                    code_fwrite(&offset, sizeof(unsigned long), 1, fout);
-                    DEBUG("Wrote node %x key %s offset %x\n", (unsigned long)_root->nodes[i], (_root->nodes[i])->data, offset);
-                    offset = (unsigned long)_root->nodes[i]->data - (unsigned long)allocator->GetLowestAddress();
-                    code_fwrite(&offset, sizeof(unsigned long), 1, fout);
-                    offset = (unsigned long)_root->nodes[i]->value - (unsigned long)allocator->GetLowestAddress();
-                    code_fwrite(&offset, sizeof(unsigned long), 1, fout);
-                    offset = (unsigned long)_root->nodes[i]->size;
-                    code_fwrite(&offset, sizeof(unsigned long), 1, fout);
+                    serialize(fout, _root->nodes[i], allocator);
                 }
                 else
                 {
@@ -347,29 +360,20 @@ public:
             unsigned long offset = 0, offset_data = 0, offset_value = 0, offset_size = 0;
             code_fread(&offset, sizeof(unsigned long), 1, fin);
             DEBUG("Read initial offset %x %d\n", offset, n);
-            code_fread(&offset_data, sizeof(unsigned long), 1, fin);
-            DEBUG("Read offset_data %x\n", offset_data);
-            code_fread(&offset_value, sizeof(unsigned long), 1, fin);
-            DEBUG("Read offset value %x\n", offset_value);
-            code_fread(&offset_size, sizeof(unsigned long), 1, fin);
-            DEBUG("Read offset size %d\n", offset_size);
             if(offset != 0)
             {
                 if(n==0)
                 {
                     *_root = (unsigned long)allocator->GetLowestAddress() + offset;
+                    deserialize(fin, *_root, allocator);
+
                     (*_root)->parent = NULL;
-                    (*_root)->data = (unsigned long)allocator->GetLowestAddress() + offset_data;
-                    (*_root)->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
-                    (*_root)->size = (int)offset_size;
                     tmp = *_root;
                 }
                 else
                 {
                     tmp = (unsigned long)allocator->GetLowestAddress() + offset;
-                    tmp->data = (unsigned long)allocator->GetLowestAddress() + offset_data;
-                    tmp->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
-                    tmp->size = (int)offset_size;
+                    deserialize(fin, tmp, allocator);
                 }
                 DEBUG("Extracted node %x key %s data %s offset %x\n", tmp, tmp->data, tmp->value, offset);
                 for(int i=0; i<buckets; i++)
@@ -379,17 +383,10 @@ public:
                     if(offset != 0)
                     {
 //                        (*_root)->nodes[i] = (unsigned long)allocator->GetLowestAddress() + offset;
-                        code_fread(&offset_data, sizeof(unsigned long), 1, fin);
-                        DEBUG("Read offset_data %x\n", offset_data);
-                        code_fread(&offset_value, sizeof(unsigned long), 1, fin);
-                        DEBUG("Read offset value %x\n", offset_value);
-                        code_fread(&offset_size, sizeof(unsigned long), 1, fin);
                         DEBUG("Read offset size %d\n", offset_size);
                         tmp->nodes[i] = (unsigned long)allocator->GetLowestAddress() + offset;
                         tmp->nodes[i]->parent = tmp;
-                        tmp->nodes[i]->data = (unsigned long)allocator->GetLowestAddress() + offset_data;
-                        tmp->nodes[i]->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
-                        tmp->nodes[i]->size = (int)offset_size;
+                        deserialize(fin, tmp->nodes[i], allocator);
                         DEBUG("Included node %x key %s data %s size %d offset %x\n", tmp->nodes[i], tmp->nodes[i]->data, tmp->nodes[i]->value, tmp->nodes[i]->size, offset);
                     }
                     else
@@ -452,6 +449,10 @@ public:
         root = node;
         root->parent = NULL;
         return;
+    }
+    BTreeNode<const char *, const char *, buckets> * getRoot(void)
+    {
+        return root;
     }
     void RemoveNode(BTreeNode<const char *, const char *, buckets> *node, bool dispose = true)
     {

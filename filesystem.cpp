@@ -121,22 +121,48 @@ static int filesystem_readdir(const char *path, void *buf, fuse_fill_dir_t fille
     (void) fi;
     (void) flags;
 
+    CharBTree<5>::CharBNode *node = tree->FindNode(path);
+
     if (strcmp(path, "/") != 0)
     {
-        return -ENOENT;
+        node = tree->FindNode(path);
+    }
+    else
+    {
+        node = tree->getRoot();
     }
 
     filler(buf, ".", NULL, 0, 0);
     filler(buf, "..", NULL, 0, 0);
     filler(buf, "memory", NULL, 0, 0);
     vector< CharBTree<5>::CharBNode * > vec;
-    tree->TraverseTree(vec, NULL, false);
+    tree->TraverseTree(vec, node, false);
     tree->Print();
     for(int i=0; i<vec.size(); i++)
         filler(buf, vec[i]->data+1, NULL, 0, 0);
 
     return 0;
 }
+
+static int filesystem_mkdir(const char *path, mode_t mode)
+{
+    if (strcmp(path, "/memory") == 0) {
+        return 0;
+    }
+    CharBTree<5>::CharBNode *node = tree->FindNode(path);
+    if(!node)
+    {
+        char *_path = (char*)mem->Allocate(strlen(path)+1);
+        memcpy(_path, path, strlen(path)+1);
+        char *str = (char*)mem->Allocate(2);
+        strcpy(str,"");
+        tree->AddNode(_path, str);
+    }
+    check_write_changes(tree, mem);
+    check_changes_for_backup(tree, mem);
+    return 0;
+}
+
 
 static int filesystem_open(const char *path, struct fuse_file_info *fi)
 {
@@ -220,6 +246,16 @@ static int filesystem_write(const char *path, const char *buf, size_t size,
 }
 
 static int filesystem_unlink(const char *path)
+{
+    CharBTree<5>::CharBNode *node = tree->FindNode(path);
+    if(!node) return -ENOENT;
+    tree->RemoveNode(node, false);
+    check_write_changes(tree, mem);
+    check_changes_for_backup(tree, mem);
+    return 0;
+}
+
+static int filesystem_rmdir(const char *path)
 {
     CharBTree<5>::CharBNode *node = tree->FindNode(path);
     if(!node) return -ENOENT;
@@ -351,6 +387,8 @@ int main(int argc, char *argv[])
 
     filesystem_oper.getattr  = filesystem_getattr;
     filesystem_oper.readdir  = filesystem_readdir;
+    filesystem_oper.mkdir    = filesystem_mkdir;
+    filesystem_oper.rmdir    = filesystem_rmdir;
     filesystem_oper.open     = filesystem_open;
     filesystem_oper.read     = filesystem_read;
     filesystem_oper.write    = filesystem_write;
