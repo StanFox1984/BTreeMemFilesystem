@@ -35,9 +35,15 @@ int changes_counter = MAX_CHANGES;
 unsigned char buffer[BUFSIZE];
 
 char *memory_file = "/memory_file";
-char *btree_file = "/bree_file";
+char *btree_file = "/btree_file";
 char *backup_memory_file = NULL;
 char *backup_btree_file = NULL;
+
+CharBTree<5>::CharBNode *root_node = NULL;
+
+CharBTree<5>::CharBNode *remove_poison_node = (CharBTree<5>::CharBNode *)0xffffffff;
+
+bool flat_view = false;
 
 static void sync_changes(CharBTree<5> *tree, MemoryAllocator2 *mem)
 {
@@ -46,17 +52,23 @@ static void sync_changes(CharBTree<5> *tree, MemoryAllocator2 *mem)
     return;
 }
 
-static void sync_backup_changes(CharBTree<5> *tree, MemoryAllocator2 *mem)
+static void check_init_backup_names(void)
 {
     if(backup_memory_file == NULL || backup_btree_file == NULL)
     {
-        backup_memory_file = (char*)mem->Allocate(strlen(memory_file)+strlen("_backup")+1);
-        backup_btree_file = (char*)mem->Allocate(strlen(btree_file)+strlen("_backup")+1);
+        backup_memory_file = (char*)malloc(strlen(memory_file)+strlen("_backup")+1);
+        backup_btree_file = (char*)malloc(strlen(btree_file)+strlen("_backup")+1);
         strcpy(backup_memory_file, memory_file);
         strcat(backup_memory_file, "_backup");
         strcpy(backup_btree_file, btree_file);
         strcat(backup_btree_file, "_backup");
     }
+    return;
+}
+
+static void sync_backup_changes(CharBTree<5> *tree, MemoryAllocator2 *mem)
+{
+    check_init_backup_names();
     mem->syncToDisk(backup_memory_file);
     tree->syncToDisk(backup_btree_file);
     return;
@@ -91,9 +103,9 @@ static int filesystem_getattr(const char *path, struct stat *stbuf)
     memset(stbuf, 0, sizeof(struct stat));
     if (strcmp(path, "/") == 0) {
         stbuf->st_mode = S_IFDIR | 0755;
-        stbuf->st_nlink = 2;
+        stbuf->st_nlink = 1;
     }
-    else if (strcmp(path, "/memory") == 0) {
+    else if (strstr(path, "/memory") != NULL) {
         stbuf->st_mode = S_IFREG | 0444;
         stbuf->st_nlink = 1;
         stbuf->st_size = sizeof(buffer);
@@ -106,7 +118,11 @@ static int filesystem_getattr(const char *path, struct stat *stbuf)
             return -ENOENT;
         _str = node->value;
         stbuf->st_mode = S_IFREG | 0444;
-        stbuf->st_nlink = 1;
+	if(node->attr.is_dir)
+	{
+	    stbuf->st_mode = S_IFDIR | 0755;
+	}
+        stbuf->st_nlink = node->filesystem_nodes->size();
         stbuf->st_size = node->size;
     }
 
@@ -129,17 +145,37 @@ static int filesystem_readdir(const char *path, void *buf, fuse_fill_dir_t fille
     }
     else
     {
-        node = tree->getRoot();
+        node = root_node;
     }
 
     filler(buf, ".", NULL, 0, 0);
     filler(buf, "..", NULL, 0, 0);
+#ifdef MEMORY_FILE
     filler(buf, "memory", NULL, 0, 0);
+#endif
     vector< CharBTree<5>::CharBNode * > vec;
-    tree->TraverseTree(vec, node, false);
-    tree->Print();
-    for(int i=0; i<vec.size(); i++)
-        filler(buf, vec[i]->data+1, NULL, 0, 0);
+    if(flat_view)
+    {
+	tree->TraverseTree(vec, node, false);
+        tree->Print();
+	for(int i=0; i<vec.size(); i++)
+    	   filler(buf, vec[i]->data+1, NULL, 0, 0);
+    }
+    else
+    {
+	for(int i=0;i<node->filesystem_nodes->size();i++)
+	{
+	    if((*(node->filesystem_nodes))[i] != remove_poison_node)
+	    {
+    		DEBUG("Displaying path %s node %s\n", path, ((*(node->filesystem_nodes))[i])->data);
+		char *s = strrchr(((*(node->filesystem_nodes))[i])->data, '/');
+		if(s)
+		{
+		    filler(buf, s+1, NULL, 0, 0);
+		}
+	    }
+	}
+    }
 
     return 0;
 }
@@ -150,13 +186,38 @@ static int filesystem_mkdir(const char *path, mode_t mode)
         return 0;
     }
     CharBTree<5>::CharBNode *node = tree->FindNode(path);
+    int last_slash = strrchr(path, '/')-path;
+    char *parent_path = (char*)mem->Allocate(last_slash+1);
+    strncpy(parent_path, path, last_slash);
+    parent_path[last_slash] = '\0';
+    CharBTree<5>::CharBNode *parent_node = tree->FindNode(parent_path);
+    if(parent_node == NULL)
+    {
+        DEBUG("Could not find parent for node path %s, considering root\n", path);
+	parent_node = root_node;
+    }
+    mem->Free(parent_path);
     if(!node)
     {
         char *_path = (char*)mem->Allocate(strlen(path)+1);
         memcpy(_path, path, strlen(path)+1);
         char *str = (char*)mem->Allocate(2);
         strcpy(str,"");
-        tree->AddNode(_path, str);
+        node = tree->AddNode(_path, str);
+	node->attr.is_dir = true;
+	node->filesystem_parent = parent_node;
+	bool added = false;
+	for(int i=0;i<parent_node->filesystem_nodes->size();i++)
+	{
+	    if((*(parent_node->filesystem_nodes))[i] == remove_poison_node)
+	    {
+		(*parent_node->filesystem_nodes)[i] = node;
+		added = true;
+		break;
+	    }
+	}
+	if(!added)
+    	    parent_node->filesystem_nodes->push_back(node);
     }
     check_write_changes(tree, mem);
     check_changes_for_backup(tree, mem);
@@ -249,6 +310,25 @@ static int filesystem_unlink(const char *path)
 {
     CharBTree<5>::CharBNode *node = tree->FindNode(path);
     if(!node) return -ENOENT;
+    int last_slash = strrchr(path, '/') - path;
+    char *parent_path = (char*)mem->Allocate(last_slash+1);
+    strncpy(parent_path, path, last_slash);
+    parent_path[last_slash] = '\0';
+    CharBTree<5>::CharBNode *parent_node = tree->FindNode(parent_path);
+    if(parent_node == NULL)
+    {
+        DEBUG("Could not find parent for node path %s, considering root\n", path);
+	parent_node = root_node;
+    }
+    mem->Free(parent_path);
+    for(int i=0;i<parent_node->filesystem_nodes->size();i++)
+    {
+	if((*(parent_node->filesystem_nodes))[i] == node)
+	{
+	    (*(parent_node->filesystem_nodes))[i] = remove_poison_node;
+	    break;
+	}
+    }
     tree->RemoveNode(node, false);
     check_write_changes(tree, mem);
     check_changes_for_backup(tree, mem);
@@ -259,6 +339,25 @@ static int filesystem_rmdir(const char *path)
 {
     CharBTree<5>::CharBNode *node = tree->FindNode(path);
     if(!node) return -ENOENT;
+    int last_slash = strrchr(path, '/') - path;
+    char *parent_path = (char*)mem->Allocate(last_slash+1);
+    strncpy(parent_path, path, last_slash);
+    parent_path[last_slash] = '\0';
+    CharBTree<5>::CharBNode *parent_node = tree->FindNode(parent_path);
+    if(parent_node == NULL)
+    {
+        DEBUG("Could not find parent for node path %s, considering root\n", path);
+	parent_node = root_node;
+    }
+    mem->Free(parent_path);
+    for(int i=0;i<parent_node->filesystem_nodes->size();i++)
+    {
+	if((*(parent_node->filesystem_nodes))[i] == node)
+	{
+	    (*(parent_node->filesystem_nodes))[i] = remove_poison_node;
+	    break;
+	}
+    }
     tree->RemoveNode(node, false);
     check_write_changes(tree, mem);
     check_changes_for_backup(tree, mem);
@@ -267,17 +366,43 @@ static int filesystem_rmdir(const char *path)
 
 static int filesystem_mknod(const char *path, mode_t mode, dev_t rdev)
 {
-    if (strcmp(path, "/memory") == 0) {
+    if (strstr(path, "/memory") != NULL) {
         return 0;
     }
     CharBTree<5>::CharBNode *node = tree->FindNode(path);
     if(!node)
     {
+        int last_slash = strrchr(path, '/') - path;
+	char *parent_path = (char*)mem->Allocate(last_slash+1);
+        strncpy(parent_path, path, last_slash);
+	parent_path[last_slash] = '\0';
+        CharBTree<5>::CharBNode *parent_node = tree->FindNode(parent_path);
+	if(parent_node == NULL)
+        {
+            DEBUG("Could not find parent for node path %s, considering root\n", path);
+	    parent_node = root_node;
+        }
+	mem->Free(parent_path);
         char *_path = (char*)mem->Allocate(strlen(path)+1);
         memcpy(_path, path, strlen(path)+1);
         char *str = (char*)mem->Allocate(2);
         strcpy(str,"");
-        tree->AddNode(_path, str);
+        CharBTree<5>::CharBNode *node = tree->AddNode(_path, str);
+	node->attr.is_dir = false;
+	node->filesystem_parent = parent_node;
+	bool added = false;
+	for(int i=0;i<parent_node->filesystem_nodes->size();i++)
+	{
+	    if((*(parent_node->filesystem_nodes))[i] == remove_poison_node)
+	    {
+		(*(parent_node->filesystem_nodes))[i] = node;
+		added = true;
+		break;
+	    }
+	}
+	if(!added)
+    	    parent_node->filesystem_nodes->push_back(node);
+	DEBUG("Added node %s to parent node %s\n", node->data, parent_node->data);
     }
     check_write_changes(tree, mem);
     check_changes_for_backup(tree, mem);
@@ -382,8 +507,55 @@ int main(int argc, char *argv[])
     coder = new Coder(pass);
     tree = new CharBTree<FILESYSTEM_NUMBUCKETS>(mem, coder);
     mem->PrintBlocksUsage();
-    mem->syncFromDisk(memory_file);
-    tree->syncFromDisk(btree_file);
+    if(mem->syncFromDisk(memory_file) != 0)
+    {
+        check_init_backup_names();
+	delete mem;
+	printf("Could not open memory file %s, trying _backup..\n", memory_file);
+        mem = new MemoryAllocator2(buffer, sizeof(buffer), num_blocks_each_size, start_block_size);
+	delete tree;
+	printf("Could not open btree file %s, trying _backup..\n", btree_file);
+        tree = new CharBTree<FILESYSTEM_NUMBUCKETS>(mem, coder);
+	if(tree->syncFromDisk(backup_btree_file) != 0)
+	{
+    	    printf("Could not open backup btree file %s\n", backup_btree_file);
+	    delete tree;
+	    tree = new CharBTree<FILESYSTEM_NUMBUCKETS>(mem, coder);
+	}
+	if(mem->syncFromDisk(backup_memory_file) != 0)
+	{
+    	    printf("Could not open backup memory file %s\n", backup_memory_file);
+	    delete mem;
+	    mem = new MemoryAllocator2(buffer, sizeof(buffer), num_blocks_each_size, start_block_size);
+	    delete tree;
+	    tree = new CharBTree<FILESYSTEM_NUMBUCKETS>(mem, coder);
+	}
+
+    }
+    if(tree->syncFromDisk(btree_file) != 0)
+    {
+        check_init_backup_names();
+	delete tree;
+	printf("Could not open btree file %s, trying _backup..\n", btree_file);
+        tree = new CharBTree<FILESYSTEM_NUMBUCKETS>(mem, coder);
+	if(tree->syncFromDisk(backup_btree_file) != 0)
+	{
+    	    printf("Could not open backup btree file %s\n", backup_btree_file);
+	    delete tree;
+	    tree = new CharBTree<FILESYSTEM_NUMBUCKETS>(mem, coder);
+	}
+    }
+
+    root_node = tree->getRoot();
+
+    if(!root_node)
+    {
+	char *root_path =(char *) mem->Allocate(strlen("/")+1);
+	root_path[0] = '/';
+	root_path[1] = '\0';
+	tree->AddNode(root_path, "");
+	root_node = tree->getRoot();
+    }
 
     filesystem_oper.getattr  = filesystem_getattr;
     filesystem_oper.readdir  = filesystem_readdir;

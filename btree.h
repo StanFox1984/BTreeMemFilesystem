@@ -69,15 +69,23 @@ struct BTreeNode
 };
 
 
-
 template<int buckets>
 struct BTreeNode<const char *, const char *, buckets>
 {
+    struct BTreeNodeAttrib     //only put POD types here!
+    {
+        bool is_dir;
+        unsigned long perm_mask;
+        unsigned long time_stamp;
+    };
+    vector<BTreeNode<const char*, const char *, buckets>* >  *filesystem_nodes;
     BTreeNode<const char *, const char *, buckets>    *nodes[buckets];
     const char *data;
     const char *value;
     int        size;
+    BTreeNodeAttrib attr;
     BTreeNode<const char *, const char *, buckets>    *parent;
+    BTreeNode<const char *, const char *, buckets>    *filesystem_parent;
     void Init(void)
     {
         memset(nodes, NULL, sizeof(void*)*buckets);
@@ -85,6 +93,7 @@ struct BTreeNode<const char *, const char *, buckets>
         data = NULL;
         value = NULL;
         size = 0;
+	filesystem_nodes = new vector<BTreeNode<const char*, const char *, buckets>* >();
     }
 
     BTreeNode()
@@ -218,11 +227,15 @@ struct BTreeNode<const char *, const char *, buckets>
     }
 };
 
+
+
+
 template<int buckets>
 class CharBTree
 {
 public:
-    typedef BTreeNode<const char *, const char *, buckets>   CharBNode;
+    typedef BTreeNode<const char *, const char *, buckets>                                  CharBNode;
+    typedef typename BTreeNode<const char *, const char *, buckets>::BTreeNodeAttrib        CharBNodeAttr;
     DefaultAllocator *allocator;
     Coder            *coder;
     CharBTree(DefaultAllocator *all = NULL, Coder *_coder = NULL)
@@ -262,20 +275,43 @@ public:
         code_fwrite(&offset, sizeof(unsigned long), 1, fout);
         offset = (unsigned long)node->size;
         code_fwrite(&offset, sizeof(unsigned long), 1, fout);
+        code_fwrite(&node->attr, sizeof(CharBNodeAttr), 1, fout);
+	int size = node->filesystem_nodes->size();
+	code_fwrite(&size, sizeof(int), 1, fout);
+	for(int i=0;i<size;i++)
+	{
+	    offset = (unsigned long)((*(node->filesystem_nodes))[i]) - (unsigned long)allocator->GetLowestAddress();
+            code_fwrite(&offset, sizeof(unsigned long), 1, fout);
+	}
+	offset = (unsigned long)node->filesystem_parent - (unsigned long)allocator->GetLowestAddress();
+        code_fwrite(&offset, sizeof(unsigned long), 1, fout);
         return;
     }
     void deserialize(FILE *fin, BTreeNode<const char *, const char *, buckets>  *node, DefaultAllocator *allocator)
     {
-        unsigned long offset_data = 0, offset_value = 0, offset_size = 0;
+	node->Init();
+        unsigned long offset_data = 0, offset_value = 0, offset_size = 0, offset = 0;
         code_fread(&offset_data, sizeof(unsigned long), 1, fin);
         DEBUG("Read offset_data %x\n", offset_data);
         code_fread(&offset_value, sizeof(unsigned long), 1, fin);
         DEBUG("Read offset value %x\n", offset_value);
         code_fread(&offset_size, sizeof(unsigned long), 1, fin);
         DEBUG("Read offset size %d\n", offset_size);
+        code_fread(&node->attr, sizeof(CharBNodeAttr), 1, fin);
         node->data = (unsigned long)allocator->GetLowestAddress() + offset_data;
         node->value = (unsigned long)allocator->GetLowestAddress() + offset_value;
         node->size = (int)offset_size;
+	int size = 0;
+	code_fread(&size, sizeof(int), 1, fin);
+	for(int i=0;i<size;i++)
+	{
+	    code_fread(&offset, sizeof(unsigned long), 1, fin);
+	    BTreeNode<const char *, const char *, buckets>  *tmp = (BTreeNode<const char *, const char *, buckets>  *)(offset + (unsigned long)allocator->GetLowestAddress());
+	    node->filesystem_nodes->push_back(tmp);
+	}
+	code_fread(&offset, sizeof(unsigned long), 1, fin);
+        BTreeNode<const char *, const char *, buckets>  *filesystem_parent = (BTreeNode<const char *, const char *, buckets>  *)(offset + (unsigned long)allocator->GetLowestAddress());
+	node->filesystem_parent = filesystem_parent;
         return;
     }
     void syncToDisk(const char *filename, BTreeNode<const char *, const char *, buckets> *_root = NULL)
@@ -329,7 +365,7 @@ public:
         fclose(fout);
         return;
     }
-    void syncFromDisk(const char *filename)
+    int syncFromDisk(const char *filename)
     {
         FILE *fin = NULL;
         BTreeNode<const char *, const char *, buckets> **_root = NULL, *tmp = NULL;
@@ -337,7 +373,7 @@ public:
         if(!fin)
         {
             DEBUG("Could not open file %s\n", filename);
-            return;
+            return -1;
         }
         DEBUG("Syncing from disk file %s\n", filename);
         _root = &root;
@@ -346,7 +382,7 @@ public:
         if(buckets_num != buckets)
         {
             DEBUG("Mismatch between template buckets and file! file: %d ours: %d\n", buckets_num, buckets);
-            throw "Mismatch between template buckets and file!";
+            return -2;
         }
         else
         {
@@ -399,14 +435,15 @@ public:
         }
 
         fclose(fin);
-        return;
+        return 0;
     }
-    void AddNode(const char *key, const char *value)
+    BTreeNode<const char *, const char *, buckets> * AddNode(const char *key, const char *value)
     {
         BTreeNode<const char *, const char *, buckets> *node = (CharBNode*)allocator->Allocate(sizeof( BTreeNode<const char *, const char *, buckets>));
         node->Init();
         node->data = (char*)allocator->Allocate(strlen(key)+1);
         node->value= (char*)allocator->Allocate(strlen(value)+1);
+	node->size = strlen(value)+1;
         strcpy(node->data, key);
         strcpy(node->value, value);
         if(!root)
@@ -415,8 +452,9 @@ public:
             return;
         }
         root->AddNode(node);
+	return node;
     }
-    void AddNodeSize(const char *key, const char *value, int size)
+    BTreeNode<const char *, const char *, buckets> *AddNodeSize(const char *key, const char *value, int size)
     {
         BTreeNode<const char *, const char *, buckets> *node = (CharBNode*)allocator->Allocate(sizeof( BTreeNode<const char *, const char *, buckets>));
         node->Init();
@@ -431,6 +469,7 @@ public:
             return;
         }
         root->AddNode(node);
+	return node;
     }
     BTreeNode<const char *, const char *, buckets>  *FindNode(const char *key)
     {

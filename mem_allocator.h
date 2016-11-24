@@ -8,17 +8,18 @@
 
 using namespace std;
 
-//#define DEBUG printf
-#define DEBUG(...)
+#define DEBUG printf
+//#define DEBUG(...)
 
 struct MemPtr
 {
+    long long    sane_magic1;
     MemPtr *next;
     MemPtr *prev;
     void *address;
     bool allocated;
     unsigned long size;
-    unsigned long sane_magic;
+    long long    sane_magic2;
 };
 
 int num_allocs = 0;
@@ -167,14 +168,14 @@ public:
         fclose(fout);
         return;
     }
-    void syncFromDisk(const char *filename)
+    int syncFromDisk(const char *filename)
     {
         FILE *fin = NULL;
         fin = fopen(filename, "r+b");
         if(!fin)
         {
             DEBUG("Could not open file %s\n", filename);
-            return;
+            return -1;
         }
         DEBUG("Syncing %x-%x from disk file %s\n", lowest_address, lowest_address + (highest_address-lowest_address)/2, filename);
         fread((void*)lowest_address, (highest_address-lowest_address)/2, 1, fin);
@@ -197,7 +198,7 @@ public:
         }
         fread((void*)&last_block_index, sizeof(int), 1, fin);
         fclose(fin);
-        return;
+        return 0;
     }
     MemoryAllocator2(void *ptr, int size, int each=16384, unsigned long start = 128)
     {
@@ -232,7 +233,8 @@ public:
                 block->prev = NULL;
                 block->next = NULL;
                 block->size = start;
-                block->sane_magic = (unsigned long)block;
+                block->sane_magic1 = (unsigned long)block;
+                block->sane_magic2 = (unsigned long)block;
                 AddBlockToFreeQueue(block, n);
                 remain -= start;
                 alloc += start;
@@ -260,8 +262,10 @@ public:
             DEBUG("block is NULL\n");
             throw;
         }
-        bool block_correct = (block->sane_magic == (unsigned long)block);
-        if(!block_correct) DEBUG("block sane magic is wrong: %x should be %x\n", block->sane_magic, block);
+        bool block_correct = (block->sane_magic1 == (unsigned long)block) && (block->sane_magic2 == (unsigned long)block);
+	if(block->allocated)
+	    block_correct = block_correct && (*((unsigned long*)(block->address + lowest_address)) == block);
+        if(!block_correct) DEBUG("block sane magic is wrong: %x %x should be both %x\n", block->sane_magic1, block->sane_magic2, block);
         bool addr_correct = (((unsigned long)block->address+lowest_address <= highest_address) && ((unsigned long)block->address+lowest_address>=lowest_address));
         if(!addr_correct) DEBUG("block address is wrong: %x should be between %x-%x\n", block->address, lowest_address, highest_address);
         return block_correct && addr_correct;
@@ -273,29 +277,40 @@ public:
         /*TODO: we need in fact to split it more that twice, but depending how much
           bigger it is*/
 
-        DEBUG("Ran out of pool %d!\n", n);
+
         int initial_n = n;
         while((!free_blocks[n]) && (n<free_blocks.size())) n++;
         if(n >= free_blocks.size())
+        {
+            DEBUG("No bigger blocks available!\n");
             /* ops looks like no bigger free blocks were available */
             return false;
+        }
+        DEBUG("Found block n %d(size %d), start splitting\n", n, 1<<(n+skip));
         int num_splits = 1<<(n - initial_n);
         int i=0;
-        for(; i<num_splits-1; i++)
+        for(; i<num_splits; i++)
         {
             /*we found bigger free block, lets create a new descriptor and initialize */
             unsigned long block_address = (lowest_address+((highest_address-lowest_address)/2)+sizeof(MemPtr)*last_block_index);
+            DEBUG("Created new block descriptor %x for n %d\n", block_address, initial_n);
             if(block_address >= highest_address) return false;
             MemPtr *block = (MemPtr*)block_address;
             block_address = (unsigned long)free_blocks[n]->address + (1<<(initial_n+skip))*i;
             if((block_address+(1<<(initial_n+skip))) >= ((highest_address - lowest_address)/2))
-                return false;
+            {
+                DEBUG("Block address goes beyond the correct range!\n");
+                throw;
+            }
             last_block_index++;
             block->address = block_address;
             block->size    = 1<<(initial_n+skip);
             block->allocated = false;
             block->prev = NULL;
-            block->sane_magic = (unsigned long)block;
+            block->sane_magic1 = (unsigned long)block;
+            block->sane_magic2 = (unsigned long)block;
+            DEBUG("Split block %x(addr %x) from n %d(size %d) to block %x(addr %x) n %d(size %d)\n", 
+            free_blocks[n], free_blocks[n]->address, n, 1<<(n + skip), block, block->address, initial_n, 1<<(initial_n + skip));
             AddBlockToFreeQueue(block, initial_n);
             /*added to the head of the queue*/
         }
@@ -303,17 +318,23 @@ public:
         /*shift the queue of bigger blocks as this one is not available anymore*/
         RemoveBlockFromQueue(block, n, free_blocks);
         free_blocks_num[n]--;
-        /*add it to the head of initial queue*/
+        /*add it to the end of initial queue*/
         AddBlockToQueue(block, initial_n, free_blocks);
         free_blocks_num[initial_n]++;
         /*the remaining part of size is a another block, increment the address*/
         unsigned long block_address = ((unsigned long)free_blocks[initial_n]->address + i*(1<<(initial_n+skip)));
         if((block_address+(1<<(initial_n+skip))) >= ( (highest_address - lowest_address)/2))
-            return false;
+        {
+            DEBUG("Block address goes beyond the correct range!\n");
+            throw;
+        }
         block->address = (void*)block_address;
         block->allocated = false;
         block->size = 1<<(initial_n+skip);
-        block->sane_magic = block;
+        block->sane_magic1 = block;
+        block->sane_magic2 = block;
+        DEBUG("Split block %x(addr %x) from n %d(size %d) to block %x(addr %x) n %d(size %d)\n", 
+        block, block->address - i*(1<<(initial_n+skip)), n, 1<<(n + skip), block, block->address, initial_n, 1<<(initial_n + skip));
         /*make it same size, initialize*/
         return true;
     }
@@ -372,9 +393,15 @@ public:
             DEBUG("n %d queue head block is not sane!\n", n);
             return NULL;
         }
+        if(free_blocks[n]->allocated)
+        {
+            DEBUG("Allocate: Block %x address %x from queue n %d(size %d) is already allocated!\n", free_blocks[n], free_blocks[n]->address, n, 1<<(n+skip));
+            throw;
+        }
         void *ptr = (void*)(((unsigned long)free_blocks[n]->address) + sizeof(unsigned long)+lowest_address);
         SetBlockToPtr(ptr, free_blocks[n]);
-        free_blocks[n]->sane_magic = free_blocks[n];
+        free_blocks[n]->sane_magic1 = free_blocks[n];
+        free_blocks[n]->sane_magic2 = free_blocks[n];
         DEBUG("Setting sane magic %x(at addr %x) for block %x address %x ptr %x\n", free_blocks[n], free_blocks[n]->address+lowest_address, free_blocks[n], free_blocks[n]->address, ptr);
         MemPtr *block = free_blocks[n];
         AddBlockToAllocQueue(block, n);
@@ -399,30 +426,43 @@ public:
         }
         if(n >= free_blocks.size())
         {
-            return NULL;
+            DEBUG("AllocateSpecificAddress: Ran out of all blocks!\n");
+            throw;
         }
 
         if(!free_blocks[n])
         {
+            DEBUG("AllocateSpecificAddress: Ran out of blocks in queue n %d(size %d)!\n", n, 1<<(n+skip));
+#ifdef MINDLESS_ALLOC
             if(!AddBlocksNextSize(n))
             {
                 return NULL;
             }
+#else
+            throw;
+#endif
         }
         if(!is_sane(free_blocks[n]))
         {
-            return NULL;
+            DEBUG("AllocateSpecificAddress: Block %x address %x from queue n %d(size %d) is insane!\n", free_blocks[n], free_blocks[n]->address, n, 1<<(n+skip));
+            throw;
+        }
+        if(free_blocks[n]->allocated)
+        {
+            DEBUG("AllocateSpecificAddress: Block %x address %x from queue n %d(size %d) is already allocated!\n", free_blocks[n], free_blocks[n]->address, n, 1<<(n+skip));
+            throw;
         }
         MemPtr *block = FindBlockWithAddressInFreeQueue(address, size);
         if(block == NULL)
         {
-            DEBUG("Could not find block with address %x size %d queue size %d for n: %d\n", address, size, free_blocks_num[n], n);
-            return NULL;
+            DEBUG("Could not find block with address %x size %d queue size %d for n %d(corrupt file or memory conf?)\n", address, size, free_blocks_num[n], n);
+            throw;
         }
 
         void *ptr = (void*)(((unsigned long)block->address) + sizeof(unsigned long)+lowest_address);
         SetBlockToPtr(ptr, block);
-        block->sane_magic = block;
+        block->sane_magic1 = block;
+        block->sane_magic2 = block;
         DEBUG("Setting sane magic %x(at addr %x) for block %x address %x ptr %x\n", block, block->address+lowest_address, block, block->address, ptr);
         AddBlockToAllocQueue(block, n);
         DEBUG("Allocator(specific):Returned address %x\n",(unsigned long)ptr);
@@ -438,7 +478,7 @@ public:
         }
         if(!block->allocated)
         {
-            DEBUG("Block %x address %x is not allocated\n", block, block->address);
+            DEBUG("Block %x address %x is not allocated(double free?)\n", block, block->address);
             throw;
         }
         int n;
@@ -504,7 +544,7 @@ public:
         int i=0;
         while(true)
         {
-            DEBUG("%x\n", block->address);
+            DEBUG("Checking %x if equal to %x free queue n %d(size %d)\n", block->address, address, n, 1<<(n+skip));
             if(block->address == address)
                 break;
             block = block->next;
@@ -518,7 +558,12 @@ public:
     }
     void AddBlockToAllocQueue(MemPtr *block, int n)
     {
-        RemoveBlockFromQueue(block, n, free_blocks);
+        if(!block->allocated)
+        {
+            DEBUG("Remove block %x address %x from free_queue n %d\n", block, block->address, n);
+            RemoveBlockFromQueue(block, n, free_blocks);
+        }
+        DEBUG("Add block %x address %x to alloc_queue n %d\n", block, block->address, n);
         AddBlockToQueue(block, n, alloc_blocks);
         if(free_blocks_num[n]>0)
             free_blocks_num[n]--;
@@ -527,7 +572,12 @@ public:
     }
     void AddBlockToFreeQueue(MemPtr *block, int n)
     {
-        RemoveBlockFromQueue(block, n, alloc_blocks);
+        if(block->allocated)
+        {
+            DEBUG("Remove block %x address %x from alloc_queue n %d\n", block, block->address, n);
+            RemoveBlockFromQueue(block, n, alloc_blocks);
+        }
+        DEBUG("Add block %x address %x to free_queue n %d\n", block, block->address, n);
         AddBlockToQueue(block, n, free_blocks);
         free_blocks_num[n]++;
         if(alloc_blocks_num[n]>0)
@@ -536,7 +586,7 @@ public:
     }
     void AddBlockToQueue(MemPtr *block, int n, vector< MemPtr *>  &blocks)
     {
-        DEBUG("Added block %x address %x to queue %d %x\n", block, block->address, n, blocks[n]);
+        DEBUG("Added block %x address %x size %d to queue n %d head block %x\n", block, block->address, block->size, n, blocks[n]);
         if(blocks[n] == NULL)
         {
             blocks[n] = block;
@@ -554,7 +604,7 @@ public:
     }
     void RemoveBlockFromQueue(MemPtr *block, int n, vector< MemPtr *> &blocks)
     {
-        DEBUG("Removed block %x address %x from queue %d %x\n", block, block->address, n, blocks[n]);
+        DEBUG("Removed block %x address %x size %d from queue n %d head block %x\n", block, block->address, block->size, n, blocks[n]);
         if(blocks[n] == NULL)
         {
             block->next = block;
