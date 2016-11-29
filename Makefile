@@ -1,7 +1,7 @@
 all:test_btree
 	g++ -Wall filesystem.cpp -I. -I/usr/local/include/fuse3  -pthread -L/usr/local/lib -lfuse3 -o filesystem -fpermissive -g
 
-clean:test_umount
+clean:
 	rm -f filesystem test_btree btree_test_file memory_file /btree_file /btree_file_backup /memory_file /memory_file_backup ./btree_log;sudo killall -9 filesystem
 
 install:
